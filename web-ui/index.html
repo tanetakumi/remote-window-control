@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ShareRemote" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>Share App Remote</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="select-screen">
+        <h1>Select an application</h1>
+        <p id="select-status">Loading windows…</p>
+        <button id="refresh-button" type="button">Refresh windows</button>
+        <div id="window-list"></div>
+      </div>
+      <div id="remote-screen" hidden>
+      <div id="top-bar">
+        <div id="status-pill">Connecting…</div>
+        <div id="bitrate-pill" hidden aria-label="Video bitrate"></div>
+        <div id="top-bar-actions">
+          <button id="windows-button" type="button" aria-label="Select window">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>
+          </button>
+          <button id="fullscreen-button" type="button" aria-label="Fullscreen">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 3H4a1 1 0 0 0-1 1v4M16 3h4a1 1 0 0 1 1 1v4M21 16v4a1 1 0 0 1-1 1h-4M3 16v4a1 1 0 0 0 1 1h4"/>
+            </svg>
+          </button>
+          <button id="keyboard-button" type="button" aria-label="Open keyboard">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 14.5zM7 9H6m4 0H9m4 0h-1m4 0h-1m-8 3H6m4 0H9m4 0h-1m4 0h-1m-8 3h10"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="video-stage">
+        <div id="video-waiting" role="status">Waiting for host video…</div>
+        <video
+          id="remote-video"
+          autoplay
+          playsinline
+          muted
+          disablepictureinpicture
+        ></video>
+      </div>
+      <div id="input-dock">
+        <textarea
+          id="hidden-text-input"
+          inputmode="text"
+          enterkeyhint="done"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          placeholder="Type text"
+        ></textarea>
+        <button id="backspace-button" type="button" aria-label="Backspace">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10 6h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-9L3 12zm4 3-4 6m0-6 4 6"/>
+          </svg>
+        </button>
+        <button id="enter-button" type="button" aria-label="Enter">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7v6a3 3 0 0 0 3 3h13m0 0-4-4m4 4-4 4"/>
+          </svg>
+        </button>
+      </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

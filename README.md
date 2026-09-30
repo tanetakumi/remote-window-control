@@ -1,188 +1,143 @@
 # Share App
 
-Windows host + mobile web client for remote control of a selected application window via Tailscale.
+Control a selected Windows 11 application window from a mobile browser. The Windows host serves a vanilla JavaScript PWA, streams WGC video through ffmpeg and Pion WebRTC, and receives touch and keyboard input through a DataChannel or WebSocket. One control connection is allowed at a time.
 
-## Purpose
+## Source layout
 
-Share App lets you control a **single window** on your Windows PC from your phone over Tailscale. Use cases:
+```text
+web-ui/                                Vite mobile PWA; regression tests in test/
+control-server/                        Go server and package tests
+window-capture/
+  apps/CaptureProbe/                    window list, stream and snapshot CLI
+  src/WindowCapture.Native/            WGC capture library
+scripts/                               build, run and runner setup tools
+docs/validation.md                     verification results and Windows/device checks
+```
 
-- Control one app (browser, IDE, game) from your phone without exposing the full desktop
-- Quick access to a window on your home PC from anywhere (within your Tailscale network)
-- Share or present a specific window without giving access to the rest of the desktop
+`CaptureProbe` is a runtime application, so it now lives under `apps/`. `Models.cs` contains the capture models. Windows input implementations use `_windows.go` filenames; the dispatcher, HTTP handlers and media process supervision can be tested on Linux. Executable names, API names and existing environment variable names are retained except for the removed network-vendor settings.
 
-**What makes it different:**
-- **Window-level** — streams one window, not the full screen
-- **PWA** — install from browser, no app store
-- **Tailscale-native** — no port forwarding, private network only
+The web UI is served by the Windows machine but executes in the phone browser. The control server handles authentication, signaling and input, while window capture provides Windows-specific frame capture. The directories are named for these functions. The native library and executable names remain stable.
 
-## Alternatives
+## Repository files
 
-| Solution | Scope | Difference from Share App |
-|----------|-------|---------------------------|
-| RDP / Microsoft Remote Desktop | Full desktop | Entire screen; requires RDP client |
-| Chrome Remote Desktop | Full desktop | Entire screen; Google dependency |
-| TeamViewer / AnyDesk | Full desktop | Entire screen; paid tiers; public relay |
-| Parsec | Full desktop (gaming) | Optimized for games; full screen |
-| RustDesk | Full desktop | Open-source RDP/VNC; full screen |
-| Tailscale + RDP | Full desktop | Full screen; requires RDP client |
-| VNC (TightVNC, etc.) | Full desktop | Full screen; no built-in mobile PWA |
-| Apache Guacamole | Full desktop | RDP/VNC in browser; heavier setup |
+- `.gitignore` excludes generated artifacts, local secrets, certificates and snapshots.
+- `.env.example` documents executable configuration; `LICENSE` contains the project license.
+- `.node-version` and `global.json` pin SDKs and are consumed by build scripts/CI and .NET respectively; Go is pinned in `control-server/go.mod`.
+- `.github/renovate.json` retains dependency update configuration; workflow definitions also live under `.github/`.
+- `docs/roadmap.md` records implementation status and remaining work; `docs/validation.md` records verification evidence.
 
-Share App fits when you need **one window** from your phone over Tailscale, without installing a dedicated client and without exposing the full desktop.
+## Build on Windows
 
-## Components
+Install the versions pinned in `.node-version`, `global.json` and `control-server/go.mod`: Node 24.21.0, .NET SDK 10.0.401 and Go 1.27.1. Streaming currently also requires an ffmpeg build with `libvpx` on PATH, and the .NET 10 runtime for the framework-dependent helper.
 
-- `host/` — Go service: client serving, auth, signaling, WebRTC, input injection
-- `client/` — Vite/Vanilla JS PWA client for mobile
-- `native-capture/` — .NET capture layer on `Windows.Graphics.Capture`
+From PowerShell in the repository root:
 
-## Architecture
+```powershell
+./scripts/build.ps1 -Check
+# To select a specific Go installation:
+./scripts/build.ps1 -GoExe 'C:\Program Files\Go\bin\go.exe' -Check
+```
 
-**Video:**
-1. Host creates WebRTC peer
-2. Starts long-lived `CaptureProbe` process
-3. `CaptureProbe` holds `WgcCaptureService` session for selected `HWND`
-4. Raw BGRA frames → host → ffmpeg (VP8/IVF) → Pion WebRTC track
+The required build order is web UI → window capture → control server. Manual equivalents:
 
-## Known Limitations
-
-### Virtual desktops (Windows)
-
-Capturing a window via `Windows.Graphics.Capture` may **stop producing new frames** when the target window is moved to a **non-active virtual desktop** (even though the process is still running). This is a Windows/DWM/WGC behavior: if the window is not being composed on the active desktop, there may be nothing new to capture.
-
-**Workaround (partial):** if at least a small part of the window remains **visible on the active desktop** (even ~1% — e.g. keep a corner peeking out from under other windows), DWM continues compositing it and capture usually keeps updating while the window is mostly occluded.
-
-**Input:**
-1. Client sends touch/keyboard via WebRTC data channel or WebSocket
-2. `host/internal/input` maps normalized coordinates to window area
-3. Win32: `SendInput`, `PostMessage` (WM_MOUSEWHEEL), `SetForegroundWindow`
-
-**Gestures (client):**
-- Tap — click
-- Long press — right click + drag
-- Swipe up — scroll down, swipe down — scroll up (single finger)
-- Two fingers — scroll by movement
-- Scroll is sent to coordinates of last tap
-
-## Prerequisites
-
-- Windows 10/11
-- Node.js for `client/`
-- .NET SDK that can build `net6.0-windows10.0.19041.0`
-- `ffmpeg` available in `PATH`
-- Tailscale installed and logged in
-
-## Build
-
-### 1. Build client
-
-```bash
-cd client
+```powershell
+cd web-ui
 npm install
 npm run build
+npm test
+cd ..
+dotnet build window-capture/apps/CaptureProbe/CaptureProbe.csproj
+cd control-server
+$goExe = (Get-Command go).Source
+& $goExe version # Verify Go 1.27.1 before continuing.
+& $goExe build -o share-host.exe ./cmd/share-host
+& $goExe vet ./...
+& $goExe test ./...
 ```
 
-### 2. Build native capture helper
+Go installation is explicit in CI. The self-hosted Windows runner is retained, with pinned Node/.NET/Go setup and locked dependency restoration. Dependency locks are checked in; build outputs are ignored.
 
-```bash
-dotnet build "native-capture/tests/CaptureProbe/CaptureProbe.csproj"
+Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTargeting=true`, and cross-build the host with `GOOS=windows GOARCH=amd64`. Linux cannot execute WGC or Win32 input. See [validation](docs/validation.md) for the tested commands and their limits.
+
+## Run and configuration
+
+Copy `.env.example` to `.env` in the repository root and set a long random `SHARE_APP_SECRET`. Run:
+
+```powershell
+./scripts/run.ps1
 ```
 
-### 3. Build Go host
+The default is HTTP on `:8443`, listening on all interfaces. Open `http://<Windows-IP>:8443/?secret=<your-secret>` on the phone, or the logged local link on Windows. Select a window to start control. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
 
-```bash
-go build ./...
+The executable reads a literal `KEY=VALUE` `.env` file; it does not execute shell commands. Supported keys are:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `SHARE_APP_ADDR` | `:8443` | HTTP listen address; the port does not imply TLS |
+| `SHARE_APP_SECRET` | random at startup | Shared secret used to obtain access tokens |
+| `SHARE_APP_CLIENT_DIR` | release `web/`, development `web-ui/dist/` | Explicit client asset directory |
+
+Environment variables override the file. Single or double quotes around a whole value are optional; inline shell expansions and inline comments are not interpreted. Relative client paths resolve from the release/repository root. Only recognized client asset types within that directory are served; parent directories, directory listings, hidden files and escaping symlinks are rejected.
+
+HTTP APIs require a Bearer token even on loopback. Tokens expire after 12 hours; the client retries authentication using its saved secret. `/host-ui` serves a sign-in shell and uses the same authenticated APIs. Browser API and WebSocket requests must come from the same host as the page. The secret is removed from the client URL after authentication.
+
+Client URLs follow the page origin, including HTTPS/WSS when HTTPS is supplied externally. HTTPS termination, domains, tunnels, NAT traversal and relay provisioning are managed separately. HTTP reachability does not establish WebRTC media reachability. Safari/PWA features requiring a secure origin should be tested through a separately supplied HTTPS URL.
+
+## Input and snapshots
+
+Retained controls include tap, long press/right-button drag, one- and two-finger scrolling, text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where the browser supports it, bitrate display and PWA installation guidance. Scroll targets the last tap. Composing text stays local until committed. Held input is released on cancellation, disconnect and target changes. Win32 text and scroll calls have bounded waits.
+
+Obtain a token for debugging:
+
+```powershell
+$session = Invoke-RestMethod 'http://127.0.0.1:8443/api/session' -Method Post -ContentType 'application/json' -Body '{"secret":"your-secret"}'
+$headers = @{ Authorization = "Bearer $($session.access_token)" }
+Invoke-RestMethod 'http://127.0.0.1:8443/api/windows' -Headers $headers
+Invoke-RestMethod 'http://127.0.0.1:8443/api/target-window' -Method Post -Headers $headers -ContentType 'application/json' -Body '{"handle":657830}'
 ```
 
-Run this inside `host/`.
+`GET /api/snapshot` returns PNG bytes for the selected target; optional `hwnd` selects a handle for that request. Optional `out=window.png` saves a **new simple PNG filename** within `snapshots/` beside the release/repository root and returns its relative path and dimensions. Existing files are not overwritten. Absolute paths, directories, traversal and Windows device names are rejected. One snapshot helper runs at a time, with a 10-second execution timeout.
 
-## Local HTTP Run
-
-Use for quick desktop testing:
-
-```bash
-cd host
-SHARE_APP_ADDR=:8095 SHARE_APP_SECRET=test-secret go run ./cmd/share-host
+```powershell
+Invoke-WebRequest 'http://127.0.0.1:8443/api/snapshot' -Headers $headers -OutFile local-copy.png
+Invoke-RestMethod 'http://127.0.0.1:8443/api/snapshot?out=window.png' -Headers $headers
+dotnet run --project window-capture/apps/CaptureProbe/CaptureProbe.csproj -- --hwnd 657830 --out 'D:\captures\probe.png'
 ```
 
-Open:
+CLI snapshots retain local caller-selected paths. Streaming uses a single long-lived capture process and encoder, never one process per frame.
 
-- `http://127.0.0.1:8095/?secret=test-secret`
+## Current distribution status
 
-## Tailscale HTTPS Run
+The artifact/release workflow still produces a folder with `share-host.exe`, `CaptureProbe/`, and `web/`, now with configuration and documentation. It remains a **development distribution**: .NET 10 runtime and ffmpeg are external requirements. The host also resolves `ffmpeg.exe` beside its executable when supplied.
 
-Generate certificates first:
+Self-contained publishing, a pinned ffmpeg bundle with checksum/notices, and a clean Windows 11 installation test are pending after Windows performance and device validation. See [remaining roadmap](docs/roadmap.md) for the remaining sequence.
 
-```bash
-tailscale cert your-machine.tail12345.ts.net
-```
+WGC can stop updating a minimized window or a window on an inactive virtual desktop. Target switching cancels the old helper independently of frame arrival. Actual WGC capture, mixed-DPI click alignment, application-specific background input and iPhone behavior still require an interactive Windows/device test.
 
-This writes:
+## Development and maintenance
 
-- `your-machine.tail12345.ts.net.crt`
-- `your-machine.tail12345.ts.net.key`
+Runtime changes must build in the order web UI → window capture → control server. Verify the Go executable path and version before building. Keep npm, NuGet and Go dependency locks in version control, and rebuild generated outputs locally. Do not commit dependency folders, build/publish output, captures, secrets, certificates or keys. Retain existing user features and the WGC/Win32 architecture; retained product strings are English.
 
-Run host from `host/`:
+Streaming ownership rules:
 
-```bash
-SHARE_APP_ADDR=:8443 SHARE_APP_CERT_DIR="." SHARE_APP_TAILSCALE_DOMAIN=your-machine.tail12345.ts.net SHARE_APP_SECRET=test-secret go run ./cmd/share-host
-```
+- Acquire the single control-connection slot before creating a peer; release it after processes, callbacks and held input have closed.
+- Keep one long-lived CaptureProbe per target and one long-lived ffmpeg encoder. Snapshot helpers are separate bounded operations. Never start streaming processes per frame.
+- Validate the 24-byte BGRA header, bound the latest-frame handoff, and keep reusable-buffer ownership explicit.
+- Target switching must cancel capture without waiting for another frame. Consume RTCP, bound and synchronize diagnostics, and keep shutdown idempotent.
+- Preserve the 10fps/quality baseline until interactive Windows measurements justify tuning. Serve only explicit client asset roots; never restore parent-directory fallback or loopback authorization bypasses.
 
-Open from phone:
+Key implementation locations:
 
-- `https://your-machine.tail12345.ts.net:8443/?secret=test-secret`
+| Function | Source |
+| --- | --- |
+| Touch gestures and release | `web-ui/src/gestures.js` |
+| Committed text, IME and special keys | `web-ui/src/keyboard.js` |
+| Connection readiness, ICE and cleanup | `web-ui/src/webrtc.js` |
+| Authentication refresh and retry | `web-ui/src/auth.js`, `web-ui/src/api.js` |
+| Win32 coordinates, DPI, buttons and bounded calls | `control-server/internal/input/sendinput_windows.go`, `control-server/internal/input/target_windows.go` |
+| Capture helper resolution and validated frame reads | `control-server/internal/nativecapture/bridge.go` |
+| Capture/encoder ownership and pacing | `control-server/internal/webrtc/windowstream.go` |
+| Native stream protocol | `window-capture/apps/CaptureProbe/Program.cs` |
+| WGC lifecycle and copying | `window-capture/src/WindowCapture.Native/WgcCaptureService.cs` |
 
-## Window Selection
-
-When opening a link with `?secret=...` the client shows a "Select application" screen with a list of windows. After selection, streaming and control begin.
-
-**Alternatives (for debugging):**
-- Host UI: `http://127.0.0.1:8095/host-ui`
-- API: `POST /api/target-window` with `{"handle": N}`, list — `GET /api/windows`
-
-**Auth:** secret is stored in localStorage; on host restart the token is refreshed automatically (retry on 401).
-
-## Release / Distro
-
-Pre-built Windows distros are in [Releases](https://github.com/vpuhoff/remote-window-control/releases). Structure:
-
-```
-share-app-vX.Y.Z/
-  share-host.exe
-  CaptureProbe/
-    CaptureProbe.exe, *.dll
-  web/
-    index.html, assets/, manifest, sw.js
-```
-
-Run from the extracted folder: `.\share-host.exe` (or double-click). Set env vars or use `.env` for `SHARE_APP_SECRET`, `SHARE_APP_TAILSCALE_DOMAIN`, etc.
-
-## Useful Debug Commands
-
-Verify native capture:
-
-```bash
-dotnet run --project "native-capture/tests/CaptureProbe/CaptureProbe.csproj" -- --hwnd 657830 --out "d:\Dev\share-app\test.png"
-```
-
-Verify host snapshot:
-
-```bash
-curl -H "Authorization: Bearer <token>" "http://127.0.0.1:8095/api/snapshot?out=d:/Dev/share-app/host-check.png"
-```
-
-## PWA
-
-The client is a PWA: it can be installed on Android (Chrome: menu → "Install app"). Manifest and Service Worker are included.
-
-## Important
-
-- `.gitignore` excludes:
-  - `*.crt`
-  - `*.key`
-  - `bin/`, `obj/`
-  - `client/node_modules/`
-  - `client/dist/`
-- `CaptureProbe` is a required runtime dependency for streaming.
-- `host/internal/nativecapture/bridge.go` resolves `CaptureProbe.exe` from the repo build output.
-- Selected window is kept in host memory and reset on restart (client automatically gets a new token).
+The control server resolves CaptureProbe from release `CaptureProbe/CaptureProbe.exe`, or development `window-capture/apps/CaptureProbe/bin/{Debug,Release}/net10.0-windows10.0.19041.0/win-x64/CaptureProbe.exe`. Do not claim Windows/iPhone compatibility, end-to-end performance gains or self-contained release readiness until the corresponding checks in [validation](docs/validation.md) and [roadmap](docs/roadmap.md) have passed.

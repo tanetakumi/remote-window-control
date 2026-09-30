@@ -3,75 +3,81 @@ name: Build
 on:
   push:
     branches: [master, main]
-    tags:
-      - 'v*'
+    tags: ['v*']
   pull_request:
     branches: [master, main]
 
 jobs:
   build:
-    runs-on: self-hosted #windows-latest
+    runs-on: [self-hosted, Windows, X64]
+    defaults:
+      run:
+        shell: pwsh
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: client/package-lock.json
-
-      - name: Build client
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
+      - name: Build and test web UI
+        working-directory: web-ui
         run: |
-          cd client
           npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run build
-
-      # - name: Set up .NET
-      #   uses: actions/setup-dotnet@v4
-      #   with:
-      #     dotnet-version: "6.0.x"
-
-      # - name: Install Windows 10 SDK (19041)
-      #   uses: GuillaumeFalourd/setup-windows10-sdk-action@v1
-      #   with:
-      #     sdk-version: "19041"
-
-      - name: Build native capture
-        run: dotnet build native-capture/tests/CaptureProbe/CaptureProbe.csproj -c Release
-
-      # - name: Set up Go
-      #   uses: actions/setup-go@v5
-      #   with:
-      #     go-version: "1.24"
-
-      - name: Build host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build and publish window capture
         run: |
-          cd host
-          go build -o share-host.exe ./cmd/share-host
-
+          dotnet restore window-capture/apps/CaptureProbe/CaptureProbe.csproj --locked-mode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-build --no-restore -o dist/native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: control-server/go.mod
+          cache-dependency-path: control-server/go.sum
+      - name: Build and test control server
+        working-directory: control-server
+        run: |
+          $goPath = (Get-Command go).Source
+          & $goPath version
+          & $goPath build -o share-host.exe ./cmd/share-host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $goPath vet ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $goPath test ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Create distro
         run: |
           $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ github.run_number }}-${{ github.sha }}" }
           $dist = "dist/share-app-$version"
-          New-Item -ItemType Directory -Force -Path "$dist/web" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$dist/CaptureProbe" | Out-Null
-          Copy-Item host/share-host.exe $dist/
-          Copy-Item -Recurse client/dist/* $dist/web/
-          Copy-Item -Recurse native-capture/tests/CaptureProbe/bin/Release/net6.0-windows10.0.19041.0/* $dist/CaptureProbe/
+          New-Item -ItemType Directory -Force -Path "$dist/web", "$dist/CaptureProbe" | Out-Null
+          Copy-Item control-server/share-host.exe $dist/
+          Copy-Item -Recurse web-ui/dist/* $dist/web/
+          Copy-Item -Recurse dist/native/* $dist/CaptureProbe/
+          Copy-Item .env.example, README.md, LICENSE $dist/
+          Copy-Item -Recurse docs $dist/
           Compress-Archive -Path "$dist/*" -DestinationPath "dist/share-app-$version.zip"
-          Get-ChildItem dist/
-
       - name: Upload artifact
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
           name: share-app-windows
           path: dist/*.zip
-
       - name: Create release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2

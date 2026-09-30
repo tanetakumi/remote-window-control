@@ -4,7 +4,7 @@ Thumbs.db
 # Local env (secrets, paths)
 .env
 
-# Tailscale certificates and keys
+# Local certificates and keys
 *.crt
 *.key
 
@@ -13,8 +13,8 @@ bin/
 obj/
 
 # Frontend build/vendor outputs
-client/node_modules/
-client/dist/
+web-ui/node_modules/
+web-ui/dist/
 
 # Go build outputs
 *.exe
@@ -27,4 +27,8 @@ client/dist/
 
 # Debug capture artifacts
 *.pdb
-native-capture/capture-test.png
+window-capture/capture-test.png
+
+# Distribution and server-side snapshots
+dist/
+snapshots/
