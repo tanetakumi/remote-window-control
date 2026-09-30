@@ -55,16 +55,22 @@ $goExe = (Get-Command go).Source
 & $goExe test ./...
 ```
 
-Go installation is explicit in CI. The self-hosted Windows runner is retained, with pinned Node/.NET/Go setup and locked dependency restoration. Dependency locks are checked in; build outputs are ignored.
+Go installation is explicit in CI, with pinned Node/.NET/Go setup and locked dependency restoration. Pull requests build and test on a GitHub-hosted Windows runner; branch and tag pushes use the retained self-hosted Windows runner and also publish/package the distribution. Only the separate tag release job has repository write permission. New updates cancel older runs for the same pull request. CI installs ffmpeg 8.1.1 through Chocolatey on the PR runner; the self-hosted runner must already provide ffmpeg on PATH. CI verifies `libvpx` encoder support before running the Go tests, without reusing cached test results. Dependency locks are checked in; build outputs are ignored.
 
 Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTargeting=true`, and cross-build the host with `GOOS=windows GOARCH=amd64`. Linux cannot execute WGC or Win32 input. See [validation](docs/validation.md) for the tested commands and their limits.
 
 ## Run and configuration
 
-Copy `.env.example` to `.env` in the repository root and set a long random `SHARE_APP_SECRET`. Run:
+When running from source, copy `.env.example` to `.env` in the repository root and set a long random `SHARE_APP_SECRET`. Run:
 
 ```powershell
 ./scripts/run.ps1
+```
+
+When using an extracted distribution ZIP, install the .NET 10 x64 runtime and provide ffmpeg with `libvpx` on PATH (or put `ffmpeg.exe` beside `share-host.exe`). Copy `.env.example` to `.env` beside `share-host.exe`, set `SHARE_APP_SECRET`, then run from the extracted folder:
+
+```powershell
+.\share-host.exe
 ```
 
 The default is HTTP on `:8443`, listening on all interfaces. Open `http://<Windows-IP>:8443/?secret=<your-secret>` on the phone, or the logged local link on Windows. Select a window to start control. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
@@ -108,7 +114,9 @@ CLI snapshots retain local caller-selected paths. Streaming uses a single long-l
 
 ## Current distribution status
 
-The artifact/release workflow still produces a folder with `share-host.exe`, `CaptureProbe/`, and `web/`, now with configuration and documentation. It remains a **development distribution**: .NET 10 runtime and ffmpeg are external requirements. The host also resolves `ffmpeg.exe` beside its executable when supplied.
+Branch pushes produce the `share-app-windows` Actions artifact containing `share-app-<run-number>-<commit-sha>.zip`. Tag pushes matching `v*` produce `share-app-<tag>.zip`, upload it as an Actions artifact for transfer, and attach it to the GitHub Release after the build and tests pass. Pull requests run build/test checks without publishing or uploading a distribution.
+
+The ZIP contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env.example`, README.md, LICENSE and `docs/`. It remains a **development distribution**: .NET 10 runtime and ffmpeg are external requirements. The host also resolves `ffmpeg.exe` beside its executable when supplied.
 
 Self-contained publishing, a pinned ffmpeg bundle with checksum/notices, and a clean Windows 11 installation test are pending after Windows performance and device validation. See [remaining roadmap](docs/roadmap.md) for the remaining sequence.
 

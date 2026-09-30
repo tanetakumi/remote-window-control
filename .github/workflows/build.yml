@@ -7,17 +7,26 @@ on:
   pull_request:
     branches: [master, main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
-    runs-on: [self-hosted, Windows, X64]
+    # Keep untrusted PR code off the persistent Windows runner.
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["windows-latest"]') || fromJSON('["self-hosted", "Windows", "X64"]') }}
+    timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -37,19 +46,35 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Build and publish window capture
+      - name: Build window capture
         run: |
           dotnet restore window-capture/apps/CaptureProbe/CaptureProbe.csproj --locked-mode
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet publish window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-build --no-restore -o dist/native
+      - name: Publish window capture
+        if: github.event_name == 'push'
+        run: |
+          dotnet publish window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-build -o dist/native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: control-server/go.mod
           cache-dependency-path: control-server/go.sum
+      - name: Install ffmpeg on PR runner
+        if: github.event_name == 'pull_request'
+        run: |
+          choco install ffmpeg --version=8.1.1 --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify ffmpeg for encoder integration tests
+        run: |
+          $ffmpegPath = (Get-Command ffmpeg -ErrorAction Stop).Source
+          & $ffmpegPath -version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $encoders = & $ffmpegPath -hide_banner -encoders
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not ($encoders -match '\s libvpx\s')) { throw "ffmpeg must support the libvpx encoder" }
       - name: Build and test control server
         working-directory: control-server
         run: |
@@ -59,11 +84,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $goPath vet ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & $goPath test ./...
+          # vet already ran in full; execute tests afresh, including ffmpeg integration.
+          & $goPath test -vet=off -count=1 ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Create distro
+        if: github.event_name == 'push'
+        id: distro
+        env:
+          DIST_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('{0}-{1}', github.run_number, github.sha) }}
         run: |
-          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ github.run_number }}-${{ github.sha }}" }
+          $version = $env:DIST_VERSION
           $dist = "dist/share-app-$version"
           New-Item -ItemType Directory -Force -Path "$dist/web", "$dist/CaptureProbe" | Out-Null
           Copy-Item control-server/share-host.exe $dist/
@@ -71,17 +101,35 @@ jobs:
           Copy-Item -Recurse dist/native/* $dist/CaptureProbe/
           Copy-Item .env.example, README.md, LICENSE $dist/
           Copy-Item -Recurse docs $dist/
-          Compress-Archive -Path "$dist/*" -DestinationPath "dist/share-app-$version.zip"
+          # Include dotfiles such as .env.example, regardless of hidden-file handling.
+          [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $dist).Path, (Join-Path $PWD "dist/share-app-$version.zip"))
+          "zip_path=dist/share-app-$version.zip" >> $env:GITHUB_OUTPUT
       - name: Upload artifact
-        if: github.ref_type != 'tag'
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: share-app-windows
-          path: dist/*.zip
+          path: ${{ steps.distro.outputs.zip_path }}
+          compression-level: 0
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: share-app-windows
+          path: dist
       - name: Create release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
