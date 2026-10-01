@@ -30,7 +30,6 @@ type Command struct {
 	Text             string  `json:"text,omitempty"`
 	X                float64 `json:"x,omitempty"`
 	Y                float64 `json:"y,omitempty"`
-	DeltaX           float64 `json:"deltaX,omitempty"`
 	DeltaY           float64 `json:"deltaY,omitempty"`
 	Width            int     `json:"width,omitempty"`
 	Height           int     `json:"height,omitempty"`

@@ -66,7 +66,7 @@ func TestDispatchRoutesCommandsToTheInjector(t *testing.T) {
 	for _, command := range []string{
 		`{"type":"input.tap","button":"left","x":0.25,"y":0.75}`,
 		`{"type":"input.mouseMove","x":0.5,"y":0.5}`,
-		`{"type":"input.scroll","deltaX":1,"deltaY":2,"x":0.1,"y":0.2}`,
+		`{"type":"input.scroll","deltaY":2,"x":0.1,"y":0.2}`,
 		`{"type":"viewport.resize","width":390,"height":844}`,
 		`{"type":"input.text","text":"hello"}`,
 	} {
@@ -75,7 +75,7 @@ func TestDispatchRoutesCommandsToTheInjector(t *testing.T) {
 	want := []string{
 		"tap:left:0.25,0.75",
 		"move:0.5,0.5",
-		"scroll:1,2@0.1,0.2",
+		"scroll:2@0.1,0.2",
 		"resize:390x844",
 		"text:hello",
 	}

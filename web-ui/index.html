@@ -100,6 +100,18 @@
           </div>
         </header>
 
+        <div id="touch-toolbar">
+          <label for="touch-mode">Input mode</label>
+          <select id="touch-mode" aria-describedby="touch-hint touch-common-hint">
+            <option value="relative">Relative pointer</option>
+            <option value="direct">Direct tap</option>
+          </select>
+          <div class="touch-guide">
+            <p id="touch-hint">Slide one finger to move the cursor, tap to click, and slide two fingers to scroll.</p>
+            <p id="touch-common-hint">To drag, double-tap and hold the second tap, then move. To right-click, hold one finger or tap with two fingers.</p>
+          </div>
+        </div>
+
         <div id="video-stage">
           <div id="video-waiting" role="status">
             <div class="radar-pulse"></div>
@@ -112,6 +124,11 @@
             muted
             disablepictureinpicture
           ></video>
+          <div id="touch-cursor" aria-hidden="true" hidden>
+            <svg viewBox="0 0 24 30">
+              <path d="M1 1v23l6-6 5 10 4-2-5-10h10z"/>
+            </svg>
+          </div>
         </div>
 
         <div id="input-dock">

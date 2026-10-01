@@ -77,7 +77,7 @@ func (m *MessageInjector) MouseUp(button string, x, y float64) error {
 	return win32.PostMouseButton(hwnd, b, false, cx, cy)
 }
 
-func (m *MessageInjector) Scroll(_, deltaY, x, y float64) error {
+func (m *MessageInjector) Scroll(deltaY, x, y float64) error {
 	hwnd, cx, cy, err := m.locate(x, y)
 	if err != nil {
 		return err

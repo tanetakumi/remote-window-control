@@ -103,7 +103,7 @@ func (d *Dispatcher) Dispatch(raw []byte) error {
 		delete(d.buttons, c.Button)
 		return nil
 	case TypeScroll:
-		return d.injector.Scroll(c.DeltaX, c.DeltaY, c.X, c.Y)
+		return d.injector.Scroll(c.DeltaY, c.X, c.Y)
 	case TypeViewportResize:
 		return d.injector.ResizeViewport(c)
 	case TypeKeyDown:

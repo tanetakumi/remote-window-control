@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { attachGestureControls } from "../src/input/gestures.js";
 import { attachKeyboardBridge } from "../src/input/keyboard.js";
 import { createRemoteConnection } from "../src/core/webrtc.js";
 
@@ -21,33 +20,6 @@ function emit(target, type, fields = {}) {
 }
 globalThis.window = globalThis;
 window.location = { protocol: "http:", host: "host:8443" };
-const finger = (x, y) => ({ clientX: x, clientY: y });
-
-test("two fingers ending separately never generate a tap; disposed listeners send nothing", () => {
-  const video = new Element();
-  const sent = [];
-  const dispose = attachGestureControls(video, (value) => sent.push(value), () => {});
-  emit(video, "touchstart", { touches: [finger(10, 10)], changedTouches: [] });
-  emit(video, "touchstart", { touches: [finger(10, 10), finger(30, 10)], changedTouches: [] });
-  emit(video, "touchend", { touches: [finger(30, 10)], changedTouches: [finger(10, 10)] });
-  emit(video, "touchend", { touches: [], changedTouches: [finger(30, 10)] });
-  assert.deepEqual(sent, []);
-  dispose();
-  emit(video, "touchstart", { touches: [finger(10, 10)], changedTouches: [] });
-  emit(video, "touchend", { touches: [], changedTouches: [finger(10, 10)] });
-  assert.deepEqual(sent, []);
-});
-
-test("touch cancellation releases a right-button hold", async () => {
-  const video = new Element();
-  const sent = [];
-  const dispose = attachGestureControls(video, (value) => sent.push(value), () => {});
-  emit(video, "touchstart", { touches: [finger(10, 10)], changedTouches: [] });
-  await new Promise((resolve) => setTimeout(resolve, 480));
-  emit(video, "touchcancel", { touches: [], changedTouches: [finger(10, 10)] });
-  assert.deepEqual(sent.map((c) => c.type), ["input.mouseDown", "input.mouseUp"]);
-  dispose();
-});
 
 test("space has one text path; IME only commits once; replacements erase the old suffix", () => {
   const controls = { buttonElement: new Element(), inputElement: new Element(), backspaceButton: new Element(), enterButton: new Element() };

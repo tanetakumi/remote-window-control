@@ -7,7 +7,7 @@ type Injector interface {
 	Tap(button string, x, y float64) error
 	MouseDown(button string, x, y float64) error
 	MouseUp(button string, x, y float64) error
-	Scroll(deltaX, deltaY, x, y float64) error
+	Scroll(deltaY, x, y float64) error
 	ResizeViewport(command Command) error
 	KeyDown(command Command) error
 	KeyUp(command Command) error

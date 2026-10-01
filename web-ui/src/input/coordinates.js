@@ -18,7 +18,7 @@ export function getVideoContentRect(element) {
   };
 }
 
-// New mouse interactions must start inside the image. An existing drag can
+// New touch interactions must start inside the image. An existing drag can
 // continue outside it, with coordinates clamped to the image edge.
 export function normalizeClientPoint(point, element, clamp = true) {
   const rect = getVideoContentRect(element);

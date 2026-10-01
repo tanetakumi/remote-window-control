@@ -102,7 +102,21 @@ Client URLs follow the page origin, including HTTPS/WSS when HTTPS is supplied e
 
 ## Input and snapshots
 
-Retained controls include tap, long press/right-button drag, one- and two-finger scrolling, mouse hover, left/right click and drag, mouse wheel scrolling, text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where the browser supports it and bitrate display. Touch scrolling targets the last tap; mouse wheel scrolling targets the mouse position. Mouse interactions start within the displayed image, ignoring letterbox margins, and drags stay captured when the pointer leaves the image. Composing text stays local until committed. Held input is released on cancellation, disconnect and target changes; mouse buttons are also released when the browser window loses focus. Win32 text and scroll calls have bounded waits.
+The remote video is touch-only, with two modes selected using the Input mode control. Relative pointer is the default: slide one finger to move the visible cursor, lift and reposition without moving it, and tap anywhere within the image to click at the cursor. Direct tap clicks the touched image position. The selected mode is saved locally when browser storage is available.
+
+| Touch gesture | Relative pointer | Direct tap |
+| --- | --- | --- |
+| One-finger slide | Move the cursor without pressing a button | Scroll at the initial touch position |
+| Tap | Left-click at the cursor | Left-click at the touched position |
+| Double-tap, holding the second tap, then move | Left-button drag from the cursor | Left-button drag from the touched position |
+| Long press (450 ms) | Right-click at the cursor | Right-click at the touched position |
+| Slide after a long press | Continue moving the cursor without holding a button; lifting does not click again | No further action until the finger lifts |
+| Two-finger tap | Right-click at the cursor | Right-click at the center of the touches |
+| Two-finger slide | Scroll at the cursor | Scroll at the center where the gesture began |
+
+Physical mouse hover, buttons and wheel input are not forwarded. Pinches are suppressed rather than sent as scrolling; video zoom is not implemented. Scrolling is vertical, uses the same direction for one and two fingers, and converts 100 CSS pixels into one wheel notch while accumulating smaller movements. New gestures must begin inside the displayed image; letterbox margins cannot click the window. Logical cursor coordinates are preserved across mode changes and video resizing, and start at the center for each new connection. The visible cursor is an overlay for the selected window, rather than the host's physical Windows cursor.
+
+Text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where supported, and bitrate display are retained. Composing text stays local until committed. Held input is released on gesture cancellation, blur, page hide, mode changes, disconnect and target changes. After a gesture is interrupted, remaining contacts are ignored until all fingers lift. Win32 text and scroll calls have bounded waits.
 
 Call the local APIs directly for debugging:
 
@@ -154,8 +168,9 @@ Key implementation locations:
 
 | Function | Source |
 | --- | --- |
-| Touch gestures and release | `web-ui/src/input/gestures.js` |
-| Mouse input and shared video coordinates | `web-ui/src/input/mouse.js`, `coordinates.js` |
+| Touch modes, gestures and release | `web-ui/src/input/gestures.js` |
+| Touch mode selector, preference and cursor overlay | `web-ui/src/input/touch-ui.js` |
+| Shared video coordinates | `web-ui/src/input/coordinates.js` |
 | Committed text, IME and special keys | `web-ui/src/input/keyboard.js` |
 | Connection readiness, ICE and cleanup | `web-ui/src/core/webrtc.js` |
 | Window list and target selection APIs | `web-ui/src/core/api.js` |

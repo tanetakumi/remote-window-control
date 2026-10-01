@@ -25,7 +25,7 @@ func MapToClient(capture, client Rect, x, y float64) (clientX, clientY int32, ok
 	return clientX, clientY, true
 }
 
-// WheelDelta converts a DOM wheel deltaY (positive scrolls down) into a Win32
+// WheelDelta converts wheel notches (positive scrolls down) into a Win32
 // wheel delta (positive scrolls up). The result is limited to the 16-bit
 // range the message carries, so large gestures cannot wrap around and scroll
 // the opposite way.
@@ -37,7 +37,7 @@ func WheelDelta(deltaY float64) int32 {
 	case delta < math.MinInt16:
 		return math.MinInt16
 	}
-	return int32(delta)
+	return int32(math.Round(delta))
 }
 
 // FitClientSize scales a desired client size down, preserving aspect ratio,

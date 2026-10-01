@@ -29,7 +29,7 @@ func TestMessageInjectorRequiresATargetWindow(t *testing.T) {
 				"Tap":                 func() error { return m.Tap("left", 0.5, 0.5) },
 				"MouseDown":           func() error { return m.MouseDown("left", 0.5, 0.5) },
 				"MouseUp":             func() error { return m.MouseUp("left", 0.5, 0.5) },
-				"Scroll":              func() error { return m.Scroll(0, 1, 0.5, 0.5) },
+				"Scroll":              func() error { return m.Scroll(1, 0.5, 0.5) },
 				"Text":                func() error { return m.Text("hello") },
 				"KeyDown special key": func() error { return m.KeyDown(input.Command{Key: "Enter"}) },
 				"KeyUp special key":   func() error { return m.KeyUp(input.Command{Key: "Enter"}) },

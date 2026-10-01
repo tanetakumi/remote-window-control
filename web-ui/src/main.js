@@ -2,8 +2,7 @@ import "./styles.css";
 
 import { fetchWindows, setTargetWindow } from "./core/api.js";
 import { createRemoteConnection } from "./core/webrtc.js";
-import { attachGestureControls } from "./input/gestures.js";
-import { attachMouseControls } from "./input/mouse.js";
+import { attachTouchControlsUI } from "./input/touch-ui.js";
 import { attachKeyboardBridge } from "./input/keyboard.js";
 import { attachViewportSync, getViewportPayload } from "./input/viewport.js";
 import { createListenerTracker } from "./lib/events.js";
@@ -15,6 +14,9 @@ const windowList = document.querySelector("#window-list");
 const videoElement = document.querySelector("#remote-video");
 const waitingElement = document.querySelector("#video-waiting");
 const videoStageElement = document.querySelector("#video-stage");
+const touchCursorElement = document.querySelector("#touch-cursor");
+const touchModeElement = document.querySelector("#touch-mode");
+const touchHintElement = document.querySelector("#touch-hint");
 const statusElement = document.querySelector("#status-pill");
 const bitrateElement = document.querySelector("#bitrate-pill");
 const fullscreenButton = document.querySelector("#fullscreen-button");
@@ -286,8 +288,13 @@ async function startRemoteControl() {
     },
   });
   waitingElement.hidden = true;
-  const releaseGestures = attachGestureControls(videoElement, remote.sendControl, setStatus);
-  const releaseMouse = attachMouseControls(videoElement, remote.sendControl);
+  const releaseTouch = attachTouchControlsUI({
+    videoElement,
+    stageElement: videoStageElement,
+    cursorElement: touchCursorElement,
+    modeElement: touchModeElement,
+    hintElement: touchHintElement,
+  }, remote.sendControl);
   const keyboard = attachKeyboardBridge(
     {
       buttonElement: keyboardButton,
@@ -304,8 +311,7 @@ async function startRemoteControl() {
   });
   const releaseTopBar = attachTopBarControls(viewport.triggerFullscreenSync);
   cleanupRemote = () => {
-    releaseGestures();
-    releaseMouse();
+    releaseTouch();
     keyboard.cleanup();
     viewport.cleanup();
     releaseTopBar();

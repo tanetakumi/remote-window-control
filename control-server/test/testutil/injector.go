@@ -51,8 +51,8 @@ func (r *RecordingInjector) MouseDown(b string, x, y float64) error {
 func (r *RecordingInjector) MouseUp(b string, x, y float64) error {
 	return r.Record("up:%s:%v,%v", b, x, y)
 }
-func (r *RecordingInjector) Scroll(dx, dy, x, y float64) error {
-	return r.Record("scroll:%v,%v@%v,%v", dx, dy, x, y)
+func (r *RecordingInjector) Scroll(dy, x, y float64) error {
+	return r.Record("scroll:%v@%v,%v", dy, x, y)
 }
 func (r *RecordingInjector) ResizeViewport(c input.Command) error {
 	return r.Record("resize:%dx%d", c.Width, c.Height)

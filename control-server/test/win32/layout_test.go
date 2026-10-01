@@ -45,12 +45,15 @@ func TestWheelDelta(t *testing.T) {
 		want   int32
 	}{
 		{0, 0},
-		{1, -120},     // scrolling down is a negative wheel delta
-		{-1, 120},     // scrolling up is positive
-		{0.5, -60},    // fractional gestures keep their magnitude
-		{100, -12000}, // a typical pixel delta
-		{300, -32768}, // would wrap to the opposite direction unclamped
-		{-300, 32767}, // likewise
+		{1, -120},       // scrolling down is a negative wheel delta
+		{-1, 120},       // scrolling up is positive
+		{0.5, -60},      // fractional gestures keep their magnitude
+		{1.0 / 120, -1}, // touch gestures accumulate and send whole wheel units
+		{-1.0 / 120, 1},
+		{31.0 / 120, -31}, // floating-point conversion must not lose a unit
+		{100, -12000},     // a typical pixel delta
+		{300, -32768},     // would wrap to the opposite direction unclamped
+		{-300, 32767},     // likewise
 		{1e9, -32768},
 		{-1e9, 32767},
 	}

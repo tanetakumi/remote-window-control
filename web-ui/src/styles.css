@@ -555,7 +555,7 @@ body {
   grid-column: 1 / -1;
   grid-row: 1 / -1;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-height: 0;
   background: #000;
 }
@@ -578,6 +578,71 @@ body {
   object-fit: contain;
   object-position: center center;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#touch-cursor {
+  position: absolute;
+  width: 22px;
+  height: 28px;
+  fill: #fff;
+  stroke: #111;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px #000);
+}
+
+#touch-cursor[hidden] {
+  display: none;
+}
+
+#touch-cursor svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#touch-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 14px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+}
+
+#touch-mode {
+  min-height: 44px;
+  min-width: 150px;
+  max-width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font: inherit;
+  touch-action: manipulation;
+}
+
+#touch-mode:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.touch-guide {
+  flex: 1 1 240px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.touch-guide p {
+  margin: 0;
 }
 
 /* Top Bar Overlay */
