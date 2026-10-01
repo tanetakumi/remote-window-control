@@ -16,8 +16,7 @@ concurrency:
 
 jobs:
   build:
-    # Keep untrusted PR code off the persistent Windows runner.
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["windows-latest"]') || fromJSON('["self-hosted", "Windows", "X64"]') }}
+    runs-on: windows-latest
     timeout-minutes: 30
     defaults:
       run:
@@ -62,8 +61,7 @@ jobs:
         with:
           go-version-file: control-server/go.mod
           cache-dependency-path: control-server/go.sum
-      - name: Install ffmpeg on PR runner
-        if: github.event_name == 'pull_request'
+      - name: Install ffmpeg
         run: |
           choco install ffmpeg --version=8.1.1 --yes --no-progress
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
