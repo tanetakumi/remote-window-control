@@ -10,9 +10,10 @@ class Element extends EventTarget {
   style = {};
   hidden = false;
   attributes = new Map();
+  rectReads = 0;
   setAttribute(name, value) { this.attributes.set(name, value); }
   getAttribute(name) { return this.attributes.get(name); }
-  getBoundingClientRect() { return this.rect; }
+  getBoundingClientRect() { this.rectReads++; return this.rect; }
 }
 function emit(target, type, fields = {}) {
   const event = new Event(type, { cancelable: true });
@@ -334,15 +335,56 @@ test("cursor rendering follows letterboxing and video resize while preserving lo
   ui.videoElement.rect = { left: 40, top: 30, width: 200, height: 200 };
   ui.stageElement.rect = { left: 40, top: 30, width: 200, height: 200 };
   emit(ui.videoElement, "resize");
-  assert.equal(ui.cursorElement.style.left, "100px");
-  assert.equal(ui.cursorElement.style.top, "100px");
+  assert.equal(ui.cursorElement.style.transform, "translate3d(100px, 100px, 0)");
   touch(ui.videoElement, "touchstart", [finger(140, 130)]);
   touch(ui.videoElement, "touchmove", [finger(160, 150)]);
   touch(ui.videoElement, "touchend", [], [finger(160, 150)]);
-  assert.equal(ui.cursorElement.style.left, "120px");
-  assert.equal(ui.cursorElement.style.top, "120px");
+  assert.equal(ui.cursorElement.style.transform, "translate3d(120px, 120px, 0)");
   ui.videoElement.rect = { left: 40, top: 30, width: 100, height: 100 };
   emit(ui.view, "resize");
-  assert.equal(ui.cursorElement.style.left, "60px");
-  assert.equal(ui.cursorElement.style.top, "60px");
+  assert.equal(ui.cursorElement.style.transform, "translate3d(60px, 60px, 0)");
+});
+
+test("cursor moves immediately before sending input without rereading overlay geometry", (t) => {
+  const ui = setupUI(t);
+  touch(ui.videoElement, "touchstart", [finger(10, 10)]);
+  const stageReads = ui.stageElement.rectReads;
+  const videoReads = ui.videoElement.rectReads;
+  const transformsAtSend = [];
+  const push = ui.sent.push.bind(ui.sent);
+  ui.sent.push = (command) => {
+    transformsAtSend.push(ui.cursorElement.style.transform);
+    return push(command);
+  };
+  touch(ui.videoElement, "touchmove", [finger(20, 20)]);
+  touch(ui.videoElement, "touchmove", [finger(30, 40)]);
+  assert.deepEqual(transformsAtSend, [
+    "translate3d(60px, 60px, 0)", "translate3d(70px, 80px, 0)",
+  ]);
+  assert.equal(ui.stageElement.rectReads, stageReads);
+  // Only the gesture's coordinate conversion reads the video once per move.
+  assert.equal(ui.videoElement.rectReads, videoReads + 2);
+  assert.equal(ui.cursorElement.style.left, undefined);
+  assert.equal(ui.cursorElement.style.top, undefined);
+});
+
+test("gesture starts and fullscreen changes refresh cached overlay geometry", (t) => {
+  const ui = setupUI(t);
+  ui.videoElement.rect = { left: 40, top: 30, width: 200, height: 100 };
+  ui.stageElement.rect = { left: 20, top: 10, width: 240, height: 140 };
+  touch(ui.videoElement, "touchstart", [finger(140, 80)]);
+  assert.equal(ui.cursorElement.style.transform, "translate3d(120px, 70px, 0)");
+  touch(ui.videoElement, "touchmove", [finger(160, 90)]);
+  touch(ui.videoElement, "touchend", [], [finger(160, 90)]);
+  assert.equal(ui.cursorElement.style.transform, "translate3d(140px, 80px, 0)");
+
+  ui.videoElement.rect = { left: 0, top: 0, width: 100, height: 100 };
+  ui.stageElement.rect = { left: 0, top: 0, width: 100, height: 100 };
+  emit(ui.videoElement.ownerDocument, "fullscreenchange");
+  assert.equal(ui.cursorElement.style.transform, "translate3d(70px, 60px, 0)");
+  ui.cleanup();
+  const reads = ui.stageElement.rectReads;
+  emit(ui.videoElement.ownerDocument, "fullscreenchange");
+  emit(ui.view, "scroll");
+  assert.equal(ui.stageElement.rectReads, reads);
 });

@@ -431,6 +431,8 @@ body {
 
 #touch-cursor {
   position: absolute;
+  left: 0;
+  top: 0;
   width: 22px;
   height: 28px;
   fill: #fff;
@@ -438,6 +440,7 @@ body {
   stroke-width: 1.5;
   stroke-linejoin: round;
   pointer-events: none;
+  will-change: transform;
   filter: drop-shadow(0 1px 2px #000);
 }
 
