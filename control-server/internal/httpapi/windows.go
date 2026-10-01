@@ -3,16 +3,10 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-
-	"share-app-host/internal/window"
 )
 
 // maxTargetRequestBytes bounds the body of a target selection request.
 const maxTargetRequestBytes = 4096
-
-type targetResponse struct {
-	Selected *window.Info `json:"selected"`
-}
 
 type selectRequest struct {
 	Handle uint64 `json:"handle"`
@@ -25,14 +19,6 @@ func (s *Server) handleListWindows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, windows)
-}
-
-func (s *Server) handleGetTarget(w http.ResponseWriter, r *http.Request) {
-	var response targetResponse
-	if selected, ok := s.windows.Current(); ok {
-		response.Selected = &selected
-	}
-	writeJSON(w, response)
 }
 
 func (s *Server) handleSelectTarget(w http.ResponseWriter, r *http.Request) {
