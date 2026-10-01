@@ -3,7 +3,7 @@ function makeSignalingUrl() {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-export function createRemoteConnection({ videoElement, onStatus, onInputMessage, onBitrate, onDisconnect, signal }) {
+export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDisconnect, signal }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error("Connection cancelled.")); return; }
     const peer = new RTCPeerConnection();
@@ -123,10 +123,6 @@ export function createRemoteConnection({ videoElement, onStatus, onInputMessage,
         catch (error) { fail(error); }
       }
     };
-    inputChannel.addEventListener("message", (event) => {
-      if (closed) return;
-      try { onInputMessage?.(JSON.parse(event.data)); } catch { /* Ignore malformed acknowledgements. */ }
-    });
     signaling.addEventListener("open", () => {
       (async () => {
         status("Signaling connected; waiting for video…");
