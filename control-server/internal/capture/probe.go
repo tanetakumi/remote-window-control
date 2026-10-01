@@ -10,11 +10,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"share-app-host/internal/hostlog"
+	"share-app-host/internal/tailbuf"
 	"share-app-host/internal/window"
 )
 
@@ -72,27 +75,20 @@ func (p *Probe) output(ctx context.Context, args ...string) ([]byte, error) {
 	defer cancel()
 	command := exec.CommandContext(ctx, p.path, args...)
 	command.WaitDelay = killDelay
+	stderr := tailbuf.New(maxErrorDetail)
+	command.Stderr = io.MultiWriter(stderr, hostlog.Stderr{Label: fmt.Sprintf("CaptureProbe args=%q", args)})
 	out, err := command.Output()
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		if tail := lastBytes(exitErr.Stderr, maxErrorDetail); len(tail) > 0 {
+	if err != nil {
+		if tail := strings.TrimSpace(stderr.String()); tail != "" {
 			err = fmt.Errorf("%w: %s", err, tail)
 		}
 	}
 	return out, err
 }
 
-// lastBytes returns the trimmed last n bytes of b.
-func lastBytes(b []byte, n int) string {
-	if len(b) > n {
-		b = b[len(b)-n:]
-	}
-	return strings.TrimSpace(string(b))
-}
-
 func (p *Probe) check() error {
 	if _, err := os.Stat(p.path); err != nil {
-		return ErrUnavailable
+		return fmt.Errorf("%w: %q: %v", ErrUnavailable, p.path, err)
 	}
 	return nil
 }

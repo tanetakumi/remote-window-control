@@ -20,6 +20,7 @@ control-server/                        Go host (module share-app-host)
     win32/                             Win32 calls (stubbed off Windows) and portable layout rules
     origin/                            same-origin policy
     tailbuf/                           bounded tail of subprocess diagnostics
+    hostlog/                           persistent host log with size-based rotation
   test/                                all Go tests, one directory per package; testutil/ is shared
 window-capture/
   apps/CaptureProbe/                    single project: window list, WGC stream and PNG snapshots
@@ -80,6 +81,8 @@ When using an extracted distribution ZIP, install the .NET 10 x64 runtime and pr
 ```
 
 The default is HTTP on `127.0.0.1:8443`, listening on loopback only. Open `http://127.0.0.1:8443/` on Windows, or the externally configured HTTPS URL on the phone. Select a window to start control. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
+
+The host also writes its log to `logs/share-host.log` beside `share-host.exe`, whatever the working directory. It is appended across restarts, uses UTC timestamps, and rotates at 5 MiB keeping `.1` and `.2`. It records startup and configuration, window selection, each connection (WebRTC state, control channel, capture start/stop, first captured frame, first video sample, a warning when no frame arrives for five seconds) and errors, including CaptureProbe and ffmpeg stderr. Input, pixels and SDP are not logged. If the log cannot be opened, startup fails and says why.
 
 The executable reads a literal `KEY=VALUE` `.env` file; it does not execute shell commands. Supported keys are:
 

@@ -32,6 +32,7 @@ window-capture/capture-test.png
 # Distribution output and local snapshot captures
 dist/
 snapshots/
+logs/
 
 # Agent skills and local agent configuration
 .agents/

@@ -3,8 +3,12 @@ package media
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	pionmedia "github.com/pion/webrtc/v4/pkg/media"
 )
 
 // Pipeline captures the selected window, encodes it and writes the samples to
@@ -16,6 +20,7 @@ type Pipeline struct {
 	target  Target
 	sink    SampleWriter
 	encoder EncoderConfig
+	logf    func(string, ...any)
 }
 
 // NewPipeline returns a Pipeline that streams the window chosen by target.
@@ -23,7 +28,7 @@ func NewPipeline(source Source, target Target, sink SampleWriter, encoder Encode
 	if encoder.FPS <= 0 {
 		encoder.FPS = DefaultFPS
 	}
-	return &Pipeline{source: source, target: target, sink: sink, encoder: encoder}
+	return &Pipeline{source: source, target: target, sink: sink, encoder: encoder, logf: log.Printf}
 }
 
 // Run streams until ctx is cancelled, waiting while no window is selected. It
@@ -60,7 +65,14 @@ func (p *Pipeline) Run(ctx context.Context) error {
 //
 // It owns one capture stream and one long-lived encoder per frame size; the
 // encoder is restarted only when the window's size changes.
-func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-chan struct{}) error {
+func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-chan struct{}) (result error) {
+	started := time.Now()
+	var frames uint64
+	sink := &firstSampleLogger{SampleWriter: p.sink, logf: p.logf, handle: handle, started: started}
+	p.logf("capture starting hwnd=%d", handle)
+	defer func() {
+		p.logf("capture stopped hwnd=%d elapsed=%s frames=%d samples=%d error=%v", handle, time.Since(started).Round(time.Millisecond), frames, sink.samples.Load(), result)
+	}()
 	ctx, cancel := context.WithCancel(parent)
 	var watcher sync.WaitGroup
 	watcher.Add(1)
@@ -76,8 +88,9 @@ func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-ch
 
 	stream, err := p.source(ctx, handle)
 	if err != nil {
-		return err
+		return fmt.Errorf("open capture hwnd=%d: %w", handle, err)
 	}
+	p.logf("capture opened hwnd=%d", handle)
 	pump := startFramePump(ctx, cancel, stream)
 
 	var enc *encoder
@@ -92,6 +105,8 @@ func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-ch
 
 	ticker := time.NewTicker(time.Second / time.Duration(p.encoder.FPS))
 	defer ticker.Stop()
+	lastFrame := time.Now()
+	stallLogged := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -101,19 +116,49 @@ func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-ch
 
 		frame, ok := pump.next()
 		if !ok {
+			if !stallLogged && time.Since(lastFrame) >= 5*time.Second {
+				p.logf("capture waiting hwnd=%d no new frame for %s frames=%d", handle, time.Since(lastFrame).Round(time.Millisecond), frames)
+				stallLogged = true
+			}
 			continue
 		}
+		if frames == 0 {
+			p.logf("first capture frame hwnd=%d size=%dx%d elapsed=%s", handle, frame.Width, frame.Height, time.Since(started).Round(time.Millisecond))
+		}
+		frames++
+		lastFrame = time.Now()
+		stallLogged = false
 		if !enc.matches(frame.Width, frame.Height) {
 			closeEncoder(enc)
 			enc = nil
-			if enc, err = startEncoder(ctx, p.encoder, p.sink, frame.Width, frame.Height); err != nil {
-				return err
+			if enc, err = startEncoder(ctx, p.encoder, sink, frame.Width, frame.Height); err != nil {
+				return fmt.Errorf("start encoder hwnd=%d: %w", handle, err)
 			}
 		}
 		err = enc.WriteFrame(frame.Data)
 		pump.recycle(frame.Data)
 		if err != nil {
-			return err
+			return fmt.Errorf("encode frame hwnd=%d: %w", handle, err)
 		}
 	}
+}
+
+// firstSampleLogger counts samples written to the track and logs the first, so
+// a log shows whether video ever left the host.
+type firstSampleLogger struct {
+	SampleWriter
+	logf    func(string, ...any)
+	handle  uint64
+	started time.Time
+	samples atomic.Uint64
+}
+
+func (s *firstSampleLogger) WriteSample(sample pionmedia.Sample) error {
+	if err := s.SampleWriter.WriteSample(sample); err != nil {
+		return err
+	}
+	if s.samples.Add(1) == 1 {
+		s.logf("first video sample written hwnd=%d bytes=%d elapsed=%s", s.handle, len(sample.Data), time.Since(s.started).Round(time.Millisecond))
+	}
+	return nil
 }

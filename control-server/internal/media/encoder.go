@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"share-app-host/internal/hostlog"
 	"share-app-host/internal/tailbuf"
 )
 
@@ -110,7 +111,7 @@ func startEncoder(parent context.Context, cfg EncoderConfig, sink SampleWriter, 
 		consumeDone: make(chan struct{}),
 		waitDone:    make(chan struct{}),
 	}
-	cmd.Stderr = &e.stderr
+	cmd.Stderr = io.MultiWriter(&e.stderr, hostlog.Stderr{Label: "ffmpeg"})
 	if err := cmd.Start(); err != nil {
 		cancel()
 		_ = stdin.Close()

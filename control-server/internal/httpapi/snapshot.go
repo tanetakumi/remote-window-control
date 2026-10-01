@@ -1,6 +1,9 @@
 package httpapi
 
-import "net/http"
+import (
+	"log"
+	"net/http"
+)
 
 // handleSnapshot returns the selected window as a PNG. It is a debugging aid.
 // File output and per-request window selection were removed, so those
@@ -24,6 +27,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := s.snapshots.CapturePNG(r.Context(), current.Handle)
 	if err != nil {
+		log.Printf("snapshot failed hwnd=%d: %v", current.Handle, err)
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}

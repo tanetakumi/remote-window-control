@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"share-app-host/internal/hostlog"
 	"share-app-host/internal/tailbuf"
 )
 
@@ -51,7 +52,7 @@ func (p *Probe) OpenStream(ctx context.Context, handle uint64) (*Stream, error) 
 		cancel: cancel,
 		done:   make(chan struct{}),
 	}
-	command.Stderr = &s.stderr
+	command.Stderr = io.MultiWriter(&s.stderr, hostlog.Stderr{Label: fmt.Sprintf("CaptureProbe hwnd=%d", handle)})
 	if err := command.Start(); err != nil {
 		cancel()
 		_ = pipe.Close()

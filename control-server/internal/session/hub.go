@@ -61,10 +61,12 @@ func (h *Hub) Close() {
 // ServeHTTP upgrades the request to a WebSocket and serves the session.
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !origin.Same(r) {
+		log.Print("session rejected: origin forbidden")
 		http.Error(w, "origin forbidden", http.StatusForbidden)
 		return
 	}
 	if !h.slot.TryAcquire() {
+		log.Print("session rejected: connection slot unavailable")
 		http.Error(w, "a control connection is already active", http.StatusConflict)
 		return
 	}
@@ -74,13 +76,16 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ws, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("signaling upgrade failed: %v", err)
 		return
 	}
 	c := newConn(ws)
+	c.logf("signaling connected")
 	defer c.Close()
 	h.slot.OnClose(c.abort)
 
 	h.serve(c)
+	c.logf("session ended")
 }
 
 // serve handles one connection until it ends.
@@ -94,6 +99,7 @@ func (h *Hub) serve(c *conn) {
 		}
 	}
 	peer, err := media.NewPeer(media.PeerOptions{
+		Logf:    c.logf,
 		Source:  h.opts.Source,
 		Target:  h.opts.Target,
 		Encoder: h.opts.Encoder,
@@ -102,11 +108,13 @@ func (h *Hub) serve(c *conn) {
 		},
 		OnControl: control,
 		OnFailure: func(err error) {
+			c.logf("media failed: %v", err)
 			c.send(errorMessage(err.Error()))
 			c.abort()
 		},
 	})
 	if err != nil {
+		c.logf("peer creation failed: %v", err)
 		c.send(errorMessage(err.Error()))
 		return
 	}
@@ -115,27 +123,32 @@ func (h *Hub) serve(c *conn) {
 	for {
 		data, err := c.read()
 		if err != nil {
+			c.logf("signaling read ended: %v", err)
 			return
 		}
 		var msg message
 		if err := json.Unmarshal(data, &msg); err != nil {
+			c.logf("invalid signaling message: %v", err)
 			c.send(errorMessage("invalid signaling message"))
 			return
 		}
 		switch msg.Type {
 		case typeOffer:
+			c.logf("offer received")
 			answer, err := peer.AcceptOffer(msg.SDP)
 			if err != nil {
+				c.logf("offer failed: %v", err)
 				c.send(errorMessage(err.Error()))
 				return
 			}
 			c.send(message{Type: typeAnswer, SDP: answer})
+			c.logf("answer sent")
 		case typeICE:
 			if msg.Candidate == nil {
 				continue
 			}
 			if err := peer.AddICECandidate(*msg.Candidate); err != nil {
-				log.Printf("ICE error: %v", err)
+				c.logf("ICE candidate failed: %v", err)
 				return
 			}
 		default:

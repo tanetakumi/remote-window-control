@@ -1,13 +1,18 @@
 package session
 
 import (
+	"fmt"
+	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
 
 	"share-app-host/internal/input"
 )
+
+var nextSessionID atomic.Uint64
 
 const (
 	// readLimit caps a single incoming message.
@@ -23,7 +28,8 @@ const (
 // conn wraps a WebSocket for one session: it serialises writes, enforces
 // deadlines and runs a keep-alive heartbeat.
 type conn struct {
-	ws *websocket.Conn
+	ws   *websocket.Conn
+	logf func(string, ...any)
 
 	writeMu sync.Mutex
 
@@ -35,6 +41,8 @@ type conn struct {
 // newConn configures ws and starts its heartbeat. Call Close when done.
 func newConn(ws *websocket.Conn) *conn {
 	c := &conn{ws: ws, stop: make(chan struct{})}
+	id := nextSessionID.Add(1)
+	c.logf = func(format string, args ...any) { log.Printf(fmt.Sprintf("session=%d ", id)+format, args...) }
 	ws.SetReadLimit(readLimit)
 	_ = ws.SetReadDeadline(time.Now().Add(idleTimeout))
 	ws.SetPongHandler(func(string) error {
@@ -55,6 +63,7 @@ func (c *conn) runHeartbeat() {
 			return
 		case <-ticker.C:
 			if err := c.ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeTimeout)); err != nil {
+				c.logf("signaling heartbeat failed: %v", err)
 				c.abort()
 				return
 			}
@@ -75,6 +84,7 @@ func (c *conn) send(m message) {
 	defer c.writeMu.Unlock()
 	_ = c.ws.SetWriteDeadline(time.Now().Add(writeTimeout))
 	if err := c.ws.WriteJSON(m); err != nil {
+		c.logf("signaling write failed type=%s: %v", m.Type, err)
 		c.abort()
 	}
 }

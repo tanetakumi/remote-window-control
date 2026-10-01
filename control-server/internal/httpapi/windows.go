@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -15,6 +16,7 @@ type selectRequest struct {
 func (s *Server) handleListWindows(w http.ResponseWriter, r *http.Request) {
 	windows, err := s.windows.List(r.Context())
 	if err != nil {
+		log.Printf("window enumeration failed: %v", err)
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -30,8 +32,10 @@ func (s *Server) handleSelectTarget(w http.ResponseWriter, r *http.Request) {
 	}
 	selected, err := s.windows.Select(r.Context(), request.Handle)
 	if err != nil {
+		log.Printf("target selection failed hwnd=%d: %v", request.Handle, err)
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	log.Printf("target selected hwnd=%d process=%q pid=%d title=%q class=%q", selected.Handle, selected.ProcessName, selected.ProcessID, selected.Title, selected.ClassName)
 	writeJSON(w, selected)
 }

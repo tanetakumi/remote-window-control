@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 
 	pion "github.com/pion/webrtc/v4"
@@ -26,6 +27,8 @@ type PeerOptions struct {
 	Source  Source
 	Target  Target
 	Encoder EncoderConfig
+	// Logf records lifecycle events; nil uses the host logger.
+	Logf func(string, ...any)
 
 	// OnICE receives each local ICE candidate to send to the browser.
 	OnICE func(pion.ICECandidateInit)
@@ -53,6 +56,9 @@ type Peer struct {
 // NewPeer creates a peer connection with its video track. Streaming starts
 // once the connection is established.
 func NewPeer(opts PeerOptions) (*Peer, error) {
+	if opts.Logf == nil {
+		opts.Logf = log.Printf
+	}
 	if opts.OnICE == nil {
 		opts.OnICE = func(pion.ICECandidateInit) {}
 	}
@@ -77,6 +83,7 @@ func NewPeer(opts PeerOptions) (*Peer, error) {
 		}
 	})
 	pc.OnConnectionStateChange(func(state pion.PeerConnectionState) {
+		opts.Logf("WebRTC state=%s", state)
 		switch state {
 		case pion.PeerConnectionStateConnected:
 			connectedOnce.Do(func() { close(connected) })
@@ -91,6 +98,8 @@ func NewPeer(opts PeerOptions) (*Peer, error) {
 			_ = channel.Close()
 			return
 		}
+		channel.OnOpen(func() { opts.Logf("control channel open") })
+		channel.OnClose(func() { opts.Logf("control channel closed") })
 		channel.OnMessage(func(msg pion.DataChannelMessage) {
 			if ctx.Err() == nil {
 				opts.OnControl(msg.Data)
@@ -105,6 +114,7 @@ func NewPeer(opts PeerOptions) (*Peer, error) {
 		return nil, err
 	}
 	pipeline := NewPipeline(opts.Source, opts.Target, track, opts.Encoder)
+	pipeline.logf = opts.Logf
 
 	p.workers.Add(2)
 	go func() {
