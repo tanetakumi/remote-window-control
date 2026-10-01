@@ -32,7 +32,17 @@ test("rejected API requests report errors without attempting authentication", as
     return new Response("Request rejected", { status: 401 });
   });
 
-  await assert.rejects(fetchWindows(), /Could not load windows/);
+  await assert.rejects(fetchWindows(), /Request rejected/);
   await assert.rejects(setTargetWindow(123), /Request rejected/);
   assert.deepEqual(calls, ["/api/windows", "/api/target-window"]);
+});
+
+test("window loading preserves helper diagnostics and falls back on empty errors", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response("  You must install .NET to run this application.\n", { status: 502 }),
+  );
+  await assert.rejects(fetchWindows(), /You must install \.NET to run this application\./);
+
+  t.mock.method(globalThis, "fetch", async () => new Response("", { status: 502 }));
+  await assert.rejects(fetchWindows(), /Could not load windows/);
 });

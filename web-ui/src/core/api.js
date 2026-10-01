@@ -1,6 +1,6 @@
 export async function fetchWindows() {
   const res = await fetch("/api/windows");
-  if (!res.ok) throw new Error("Could not load windows");
+  if (!res.ok) throw new Error((await res.text()).trim() || "Could not load windows");
   return res.json();
 }
 

@@ -57,6 +57,16 @@ jobs:
         run: |
           dotnet publish window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-build -o dist/native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke test window enumeration
+        run: |
+          $probe = if (Test-Path dist/native/CaptureProbe.exe) { "dist/native/CaptureProbe.exe" } else { "window-capture/apps/CaptureProbe/bin/Release/net10.0-windows10.0.19041.0/win-x64/CaptureProbe.exe" }
+          $output = & $probe --list
+          if ($LASTEXITCODE -ne 0) { throw "CaptureProbe --list failed with exit code $LASTEXITCODE" }
+          $document = [System.Text.Json.JsonDocument]::Parse(($output -join "`n"))
+          try {
+            if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Array) { throw "CaptureProbe --list did not return a JSON array" }
+            Write-Host "Window enumeration succeeded: $($document.RootElement.GetArrayLength()) windows"
+          } finally { $document.Dispose() }
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
