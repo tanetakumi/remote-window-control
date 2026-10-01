@@ -16,20 +16,18 @@ func TestParseDotenv(t *testing.T) {
 	}{
 		{"empty", "", map[string]string{}},
 		{"comments and blank lines", "# a comment\n\n   \n  # indented comment\n", map[string]string{}},
-		{"plain values", "SHARE_APP_ADDR=127.0.0.1:9000\nSHARE_APP_CLIENT_DIR=web\n",
-			map[string]string{"SHARE_APP_ADDR": "127.0.0.1:9000", "SHARE_APP_CLIENT_DIR": "web"}},
+		{"plain value", "SHARE_APP_ADDR=127.0.0.1:9000\n", map[string]string{"SHARE_APP_ADDR": "127.0.0.1:9000"}},
 		{"whitespace is trimmed", "  SHARE_APP_ADDR  =  :8443  \n", map[string]string{"SHARE_APP_ADDR": ":8443"}},
 		{"double quotes are stripped", `SHARE_APP_ADDR="127.0.0.1:1"`, map[string]string{"SHARE_APP_ADDR": "127.0.0.1:1"}},
 		{"single quotes are stripped", `SHARE_APP_ADDR='127.0.0.1:1'`, map[string]string{"SHARE_APP_ADDR": "127.0.0.1:1"}},
 		{"mismatched quotes are kept", `SHARE_APP_ADDR="abc'`, map[string]string{"SHARE_APP_ADDR": `"abc'`}},
 		{"a lone quote is kept", `SHARE_APP_ADDR="`, map[string]string{"SHARE_APP_ADDR": `"`}},
-		{"values are literal, never evaluated", "SHARE_APP_CLIENT_DIR='literal-$(command) `x` $HOME'\n",
-			map[string]string{"SHARE_APP_CLIENT_DIR": "literal-$(command) `x` $HOME"}},
-		{"value may contain equals signs", "SHARE_APP_CLIENT_DIR=a=b\n", map[string]string{"SHARE_APP_CLIENT_DIR": "a=b"}},
+		{"values are literal, never evaluated", "SHARE_APP_ADDR='literal-$(command) `x` $HOME'\n",
+			map[string]string{"SHARE_APP_ADDR": "literal-$(command) `x` $HOME"}},
+		{"value may contain equals signs", "SHARE_APP_ADDR=a=b\n", map[string]string{"SHARE_APP_ADDR": "a=b"}},
 		{"empty value", "SHARE_APP_ADDR=\n", map[string]string{"SHARE_APP_ADDR": ""}},
 		{"the last duplicate wins", "SHARE_APP_ADDR=a\nSHARE_APP_ADDR=b\n", map[string]string{"SHARE_APP_ADDR": "b"}},
-		{"CRLF line endings", "SHARE_APP_ADDR=a\r\nSHARE_APP_CLIENT_DIR=b\r\n",
-			map[string]string{"SHARE_APP_ADDR": "a", "SHARE_APP_CLIENT_DIR": "b"}},
+		{"CRLF line endings", "# c\r\nSHARE_APP_ADDR=a\r\n", map[string]string{"SHARE_APP_ADDR": "a"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -51,6 +49,8 @@ func TestParseDotenvRejectsInvalidLines(t *testing.T) {
 		wantLine string
 	}{
 		{"unknown key", "SHARE_APP_ADDR=a\nSHARE_APP_TYPO=b\n", "line 2"},
+		{"removed client directory setting", "SHARE_APP_CLIENT_DIR=web\n", "line 1"},
+		{"removed secret setting", "SHARE_APP_SECRET=x\n", "line 1"},
 		{"missing equals", "SHARE_APP_ADDR\n", "line 1"},
 		{"empty key", "=value\n", "line 1"},
 		{"keys are case sensitive", "share_app_addr=x\n", "line 1"},

@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	envAddr      = "SHARE_APP_ADDR"
-	envClientDir = "SHARE_APP_CLIENT_DIR"
+	envAddr = "SHARE_APP_ADDR"
 
 	defaultAddr = "127.0.0.1:8443"
 )
@@ -22,7 +21,8 @@ const (
 type Config struct {
 	// ListenAddr is the HTTP listen address; loopback by default.
 	ListenAddr string
-	// ClientDir is the directory of web client assets that are served.
+	// ClientDir is the directory of web client assets that are served: web/
+	// beside the executable in a release, web-ui/dist/ in a checkout.
 	ClientDir string
 	// ProbePath is the CaptureProbe executable.
 	ProbePath string
@@ -73,13 +73,9 @@ func LoadFrom(env Env) (Config, error) {
 		return fallback
 	}
 
-	clientDir := setting(envClientDir, defaultClientDir(base))
-	if !filepath.IsAbs(clientDir) {
-		clientDir = filepath.Join(base, clientDir)
-	}
 	return Config{
 		ListenAddr: setting(envAddr, defaultAddr),
-		ClientDir:  clientDir,
+		ClientDir:  defaultClientDir(base),
 		ProbePath:  findProbe(base),
 		FFmpegPath: findFFmpeg(env.ExeDir),
 	}, nil

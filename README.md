@@ -92,15 +92,14 @@ The executable reads a literal `KEY=VALUE` `.env` file; it does not execute shel
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `SHARE_APP_ADDR` | `127.0.0.1:8443` | HTTP listen address; the port does not imply TLS |
-| `SHARE_APP_CLIENT_DIR` | release `web/`, development `web-ui/dist/` | Explicit client asset directory |
 
-Environment variables override the file. Single or double quotes around a whole value are optional; inline shell expansions and inline comments are not interpreted. Relative client paths resolve from the release/repository root. Only recognized client asset types within that directory are served; parent directories, directory listings, hidden files and escaping symlinks are rejected.
+Environment variables override the file. Single or double quotes around a whole value are optional; inline shell expansions and inline comments are not interpreted. The web client is found automatically: `web/` beside the executable in a release, `web-ui/dist/` in a checkout. Only `.html`, `.css` and `.js` files within that directory are served; parent directories, directory listings, hidden files and escaping symlinks are rejected.
 
 The application has no login, shared secret, access tokens or authentication endpoint. The mobile UI loads immediately and uses the same APIs as any direct caller. Browser API and WebSocket requests must come from the same host as the page. One control connection is allowed at a time; target selection is shared across clients, including during an active connection.
 
 For external access, run Cloudflare Tunnel on the Windows host and route the public hostname to `http://127.0.0.1:8443`. Protect the entire hostname with Cloudflare Access, including `/api/*` and `/ws`, and enable token validation in `cloudflared` using [Protect with Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/). Keep the origin reachable only through the trusted proxy for remote clients. Preserve the public HTTP `Host` header so the application's Origin checks continue to work. Local loopback access requires no authentication; Cloudflare-specific integration remains outside the application code.
 
-When upgrading, remove `SHARE_APP_SECRET` from existing `.env` files; it is no longer a supported configuration key. Client-side credential storage and secret-bearing URLs are no longer used.
+When upgrading, remove `SHARE_APP_SECRET` and `SHARE_APP_CLIENT_DIR` from existing `.env` files; they are no longer supported configuration keys, and the host refuses to start with an error naming the offending line. Client-side credential storage and secret-bearing URLs are no longer used.
 
 Client URLs follow the page origin, including HTTPS/WSS when HTTPS is supplied externally. HTTPS termination, domains, tunnels, NAT traversal and relay provisioning are managed separately. HTTP reachability does not establish WebRTC media reachability. Safari features requiring a secure origin should be tested through a separately supplied HTTPS URL.
 

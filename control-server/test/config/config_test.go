@@ -110,30 +110,28 @@ func TestExecutableDirectoryIsTheFallbackBase(t *testing.T) {
 
 func TestSettingsPrecedence(t *testing.T) {
 	root, exeDir := checkout(t)
-	writeEnvFile(t, root, "SHARE_APP_ADDR=127.0.0.1:9000\nSHARE_APP_CLIENT_DIR=from-file\n")
+	writeEnvFile(t, root, "SHARE_APP_ADDR=127.0.0.1:9000\n")
 
-	t.Run("file overrides defaults", func(t *testing.T) {
+	t.Run("file overrides the default", func(t *testing.T) {
 		cfg, err := config.LoadFrom(env(exeDir, root, nil))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cfg.ListenAddr != "127.0.0.1:9000" || cfg.ClientDir != filepath.Join(root, "from-file") {
-			t.Fatalf("got %+v", cfg)
+		if cfg.ListenAddr != "127.0.0.1:9000" {
+			t.Fatalf("ListenAddr = %q", cfg.ListenAddr)
 		}
 	})
-	t.Run("environment overrides file", func(t *testing.T) {
-		vars := map[string]string{"SHARE_APP_ADDR": "0.0.0.0:1", "SHARE_APP_CLIENT_DIR": "from-env"}
-		cfg, err := config.LoadFrom(env(exeDir, root, vars))
+	t.Run("environment overrides the file", func(t *testing.T) {
+		cfg, err := config.LoadFrom(env(exeDir, root, map[string]string{"SHARE_APP_ADDR": "0.0.0.0:1"}))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cfg.ListenAddr != "0.0.0.0:1" || cfg.ClientDir != filepath.Join(root, "from-env") {
-			t.Fatalf("got %+v", cfg)
+		if cfg.ListenAddr != "0.0.0.0:1" {
+			t.Fatalf("ListenAddr = %q", cfg.ListenAddr)
 		}
 	})
 	t.Run("an empty environment variable does not override", func(t *testing.T) {
-		vars := map[string]string{"SHARE_APP_ADDR": ""}
-		cfg, err := config.LoadFrom(env(exeDir, root, vars))
+		cfg, err := config.LoadFrom(env(exeDir, root, map[string]string{"SHARE_APP_ADDR": ""}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,39 +141,54 @@ func TestSettingsPrecedence(t *testing.T) {
 	})
 }
 
-func TestClientDirectoryResolution(t *testing.T) {
+func TestClientDirectoryIsDetectedNotConfigured(t *testing.T) {
 	root, exeDir := checkout(t)
-
-	absolute := filepath.Join(t.TempDir(), "assets")
-	cfg, err := config.LoadFrom(env(exeDir, root, map[string]string{"SHARE_APP_CLIENT_DIR": absolute}))
-	if err != nil {
-		t.Fatal(err)
+	load := func(vars map[string]string) config.Config {
+		t.Helper()
+		cfg, err := config.LoadFrom(env(exeDir, root, vars))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
 	}
-	if cfg.ClientDir != absolute {
-		t.Fatalf("absolute path changed: %q", cfg.ClientDir)
-	}
 
-	// A web/ directory in the checkout wins over the web-ui build output.
+	if got := load(nil).ClientDir; got != filepath.Join(root, "web-ui", "dist") {
+		t.Fatalf("checkout ClientDir = %q", got)
+	}
+	// A web/ directory in the base wins over the web-ui build output.
 	mkdir(t, root, "web")
-	cfg, err = config.LoadFrom(env(exeDir, root, nil))
-	if err != nil {
-		t.Fatal(err)
+	if got := load(nil).ClientDir; got != filepath.Join(root, "web") {
+		t.Fatalf("ClientDir with web/ = %q", got)
 	}
-	if cfg.ClientDir != filepath.Join(root, "web") {
-		t.Fatalf("ClientDir = %q", cfg.ClientDir)
+	// SHARE_APP_CLIENT_DIR used to override the detection; it is gone, so a
+	// leftover value in the environment changes nothing.
+	if got := load(map[string]string{"SHARE_APP_CLIENT_DIR": "elsewhere"}).ClientDir; got != filepath.Join(root, "web") {
+		t.Fatalf("a leftover SHARE_APP_CLIENT_DIR changed ClientDir to %q", got)
 	}
 }
 
 func TestEnvFileValuesAreLiteral(t *testing.T) {
 	root, exeDir := checkout(t)
-	writeEnvFile(t, root, "# test\nSHARE_APP_CLIENT_DIR='literal-$(command)'\n")
+	writeEnvFile(t, root, "# test\nSHARE_APP_ADDR='literal-$(command)'\n")
 
 	cfg, err := config.LoadFrom(env(exeDir, root, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ClientDir != filepath.Join(root, "literal-$(command)") {
-		t.Fatalf("configuration was evaluated: %q", cfg.ClientDir)
+	if cfg.ListenAddr != "literal-$(command)" {
+		t.Fatalf("configuration was evaluated: %q", cfg.ListenAddr)
+	}
+}
+
+// An old .env that still sets the removed client directory must fail loudly
+// with its location, not be silently half-applied.
+func TestEnvFileWithTheRemovedClientDirSettingIsRejected(t *testing.T) {
+	root, exeDir := checkout(t)
+	writeEnvFile(t, root, "SHARE_APP_ADDR=127.0.0.1:9000\nSHARE_APP_CLIENT_DIR=web-ui/dist\n")
+
+	_, err := config.LoadFrom(env(exeDir, root, nil))
+	if err == nil || !strings.Contains(err.Error(), "line 2") {
+		t.Fatalf("error = %v, want one pointing at line 2", err)
 	}
 }
 
