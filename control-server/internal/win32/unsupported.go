@@ -15,4 +15,5 @@ func SendText(HWND, string) error                    { return ErrUnsupported }
 func ClientScreenRect(HWND) (Rect, error)            { return Rect{}, ErrUnsupported }
 func CaptureRect(HWND) (Rect, error)                 { return Rect{}, ErrUnsupported }
 func ResizeClient(HWND, int, int) error              { return ErrUnsupported }
+func RestoreMinimized(HWND) (bool, error)            { return false, ErrUnsupported }
 func EnableDPIAwareness() error                      { return ErrUnsupported }

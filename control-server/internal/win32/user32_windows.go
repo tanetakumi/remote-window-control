@@ -18,6 +18,8 @@ var (
 	procSendMessageTimeoutW       = user32.NewProc("SendMessageTimeoutW")
 	procPostMessageW              = user32.NewProc("PostMessageW")
 	procSetWindowPos              = user32.NewProc("SetWindowPos")
+	procIsIconic                  = user32.NewProc("IsIconic")
+	procShowWindowAsync           = user32.NewProc("ShowWindowAsync")
 	procSetProcessDpiAwarenessCtx = user32.NewProc("SetProcessDpiAwarenessContext")
 	procDwmGetWindowAttribute     = dwmapi.NewProc("DwmGetWindowAttribute")
 )

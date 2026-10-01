@@ -1,6 +1,8 @@
 package input
 
 import (
+	"errors"
+	"log"
 	"time"
 
 	"share-app-host/internal/win32"
@@ -99,7 +101,19 @@ func (m *MessageInjector) ResizeViewport(c Command) error {
 	if err != nil {
 		return err
 	}
-	return win32.ResizeClient(hwnd, width, height)
+	// A minimized window ignores the new size until it is restored, and its
+	// geometry (parked at -32000,-32000) would mislead the resize plan.
+	if restored, err := win32.RestoreMinimized(hwnd); err != nil && !errors.Is(err, win32.ErrUnsupported) {
+		log.Printf("viewport resize restore failed hwnd=%d: %v", hwnd, err)
+		return err
+	} else if restored {
+		log.Printf("viewport resize restored minimized window hwnd=%d", hwnd)
+	}
+	if err := win32.ResizeClient(hwnd, width, height); err != nil {
+		log.Printf("viewport resize failed hwnd=%d: %v", hwnd, err)
+		return err
+	}
+	return nil
 }
 
 func (m *MessageInjector) KeyDown(c Command) error { return m.key(c, false) }

@@ -1,6 +1,6 @@
 // Package win32 is a thin layer over the Win32 calls the host needs to drive
 // another application's window: posting input messages, reading window
-// geometry and resizing the client area.
+// geometry, restoring minimized windows and resizing the client area.
 //
 // Everything that touches the operating system lives in *_windows.go files.
 // On other platforms unsupported.go provides the same API returning
@@ -17,6 +17,9 @@ var (
 	// ErrWindowUnavailable is returned when a window's geometry cannot be read,
 	// for example because the window was closed after being selected.
 	ErrWindowUnavailable = errors.New("target window is unavailable")
+	// ErrWindowMinimized is returned when a minimized window could not be
+	// restored, so it cannot be captured.
+	ErrWindowMinimized = errors.New("the window is minimized and could not be restored; restore it on the host PC and connect again")
 )
 
 // HWND is a native window handle.

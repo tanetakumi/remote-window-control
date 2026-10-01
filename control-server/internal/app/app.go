@@ -36,7 +36,7 @@ func Run(cfg config.Config) error {
 
 	hub := session.NewHub(session.Options{
 		Dispatcher: dispatcher,
-		Source:     media.ProbeSource(probe),
+		Source:     RestoringSource(media.ProbeSource(probe), RestoreWindow),
 		Target:     selection,
 		Encoder:    media.DefaultEncoderConfig(cfg.FFmpegPath),
 	})
