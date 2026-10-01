@@ -20,4 +20,5 @@ type Info struct {
 	ProcessID   uint32 `json:"process_id"`
 	ProcessName string `json:"process_name"`
 	ClassName   string `json:"class_name"`
+	IconPNG     string `json:"icon_png,omitempty"`
 }

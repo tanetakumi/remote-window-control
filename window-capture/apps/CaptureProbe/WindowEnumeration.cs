@@ -9,7 +9,8 @@ internal sealed record WindowInfo(
     string Title,
     int ProcessId,
     string ProcessName,
-    string ClassName);
+    string ClassName,
+    string? IconPng);
 
 internal static class WindowEnumeration
 {
@@ -56,7 +57,8 @@ internal static class WindowEnumeration
                 title,
                 unchecked((int)processId),
                 processName,
-                classBuilder.ToString()));
+                classBuilder.ToString(),
+                WindowIcon.GetPng(hwnd)));
 
             return true;
         }, (nint)0);

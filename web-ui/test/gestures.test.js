@@ -9,6 +9,9 @@ class Element extends EventTarget {
   videoHeight = 100;
   style = {};
   hidden = false;
+  attributes = new Map();
+  setAttribute(name, value) { this.attributes.set(name, value); }
+  getAttribute(name) { return this.attributes.get(name); }
   getBoundingClientRect() { return this.rect; }
 }
 function emit(target, type, fields = {}) {
@@ -282,35 +285,44 @@ function setupUI(t, saved, failStorage = false) {
   });
   const elements = {
     videoElement: video, stageElement: new Element(), cursorElement: new Element(),
-    modeElement: new Element(), hintElement: new Element(),
+    modeElement: new Element(),
   };
   const cleanup = attachTouchControlsUI(elements, (c) => sent.push(c));
   t.after(cleanup);
   return { ...elements, view, store, sent, cleanup };
 }
 
-test("the mode selector restores and saves the two modes and changes cursor visibility", (t) => {
+test("the mode button restores and toggles modes, saves the preference, and changes cursor visibility", (t) => {
   const ui = setupUI(t, "direct");
-  assert.equal(ui.modeElement.value, "direct");
+  assert.equal(ui.modeElement.textContent, "Tap");
+  assert.equal(ui.modeElement.getAttribute("aria-label"), "Input mode: Tap. Switch to Pointer.");
+  assert.equal(ui.modeElement.disabled, false);
   assert.equal(ui.cursorElement.hidden, true);
   tap(ui.videoElement);
-  ui.modeElement.value = "relative";
-  emit(ui.modeElement, "change");
+  emit(ui.modeElement, "click");
   assert.equal(ui.store.get("share-app.touch-mode"), "relative");
   assert.equal(ui.cursorElement.hidden, false);
-  assert.match(ui.hintElement.textContent, /move the cursor/);
+  assert.equal(ui.modeElement.textContent, "Pointer");
+  assert.equal(ui.modeElement.getAttribute("aria-label"), "Input mode: Pointer. Switch to Tap.");
   tap(ui.videoElement, finger(90, 90));
   assert.deepEqual(ui.sent[1], ui.sent[0]);
+  emit(ui.modeElement, "click");
+  assert.equal(ui.store.get("share-app.touch-mode"), "direct");
+  assert.equal(ui.cursorElement.hidden, true);
+  tap(ui.videoElement, finger(90, 90));
+  assert.deepEqual(ui.sent[2], { type: "input.tap", button: "left", x: 0.9, y: 0.9 });
   ui.cleanup();
   assert.equal(ui.cursorElement.hidden, true);
+  assert.equal(ui.modeElement.disabled, true);
+  emit(ui.modeElement, "click");
+  assert.equal(ui.store.get("share-app.touch-mode"), "direct");
 });
 
 for (const failStorage of [false, true]) {
   test(`invalid or unavailable storage defaults to relative pointer (storage blocked: ${failStorage})`, (t) => {
     const ui = setupUI(t, "mouse", failStorage);
-    assert.equal(ui.modeElement.value, "relative");
-    ui.modeElement.value = "direct";
-    emit(ui.modeElement, "change");
+    assert.equal(ui.modeElement.textContent, "Pointer");
+    emit(ui.modeElement, "click");
     tap(ui.videoElement);
     assert.deepEqual(ui.sent, [{ type: "input.tap", button: "left", x: 0.25, y: 0.75 }]);
   });

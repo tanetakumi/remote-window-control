@@ -3,12 +3,12 @@ import { getVideoContentRect } from "./coordinates.js";
 import { attachGestureControls, DEFAULT_TOUCH_MODE, TOUCH_MODES } from "./gestures.js";
 
 const STORAGE_KEY = "share-app.touch-mode";
-const HINTS = {
-  [TOUCH_MODES.RELATIVE]: "Slide one finger to move the cursor, tap to click, and slide two fingers to scroll.",
-  [TOUCH_MODES.DIRECT]: "Tap to click where you touch. Slide one or two fingers to scroll.",
+const MODE_LABELS = {
+  [TOUCH_MODES.RELATIVE]: "Pointer",
+  [TOUCH_MODES.DIRECT]: "Tap",
 };
 
-export function attachTouchControlsUI({ videoElement, stageElement, cursorElement, modeElement, hintElement }, sendControl) {
+export function attachTouchControlsUI({ videoElement, stageElement, cursorElement, modeElement }, sendControl) {
   const view = videoElement.ownerDocument.defaultView;
   const { listen, cleanup: removeListeners } = createListenerTracker();
   let storage;
@@ -28,18 +28,19 @@ export function attachTouchControlsUI({ videoElement, stageElement, cursorElemen
     cursorElement.style.top = `${rect.top - stage.top + cursor.y * rect.height}px`;
   };
   const renderMode = () => {
-    modeElement.value = mode;
-    hintElement.textContent = HINTS[mode];
+    const label = MODE_LABELS[mode];
+    const nextLabel = MODE_LABELS[mode === TOUCH_MODES.RELATIVE ? TOUCH_MODES.DIRECT : TOUCH_MODES.RELATIVE];
+    modeElement.textContent = label;
+    modeElement.setAttribute("aria-label", `Input mode: ${label}. Switch to ${nextLabel}.`);
+    modeElement.title = `Switch to ${nextLabel} mode`;
     renderCursor();
   };
   const gestures = attachGestureControls(videoElement, sendControl, {
     mode,
     onCursorChange(point) { cursor = point; renderCursor(); },
   });
-  listen(modeElement, "change", () => {
-    const nextMode = modeElement.value;
-    if (!Object.values(TOUCH_MODES).includes(nextMode)) return;
-    mode = nextMode;
+  listen(modeElement, "click", () => {
+    mode = mode === TOUCH_MODES.RELATIVE ? TOUCH_MODES.DIRECT : TOUCH_MODES.RELATIVE;
     gestures.setMode(mode);
     try { storage?.setItem(STORAGE_KEY, mode); } catch { /* Session-only preference. */ }
     renderMode();
@@ -49,11 +50,13 @@ export function attachTouchControlsUI({ videoElement, stageElement, cursorElemen
   const observer = view.ResizeObserver ? new view.ResizeObserver(renderCursor) : null;
   observer?.observe(videoElement);
   renderMode();
+  modeElement.disabled = false;
 
   return () => {
     gestures.cleanup();
     removeListeners();
     observer?.disconnect();
     cursorElement.hidden = true;
+    modeElement.disabled = true;
   };
 }

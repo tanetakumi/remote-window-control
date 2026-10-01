@@ -16,7 +16,7 @@ const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const center = ([a, b]) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
 const separation = ([a, b]) => distance(clientPoint(a), clientPoint(b));
 const clamp = (value) => Math.min(1, Math.max(0, value));
-// Contacts on the mode selector or keyboard must not keep a video gesture alive.
+// Contacts on the mode button or keyboard must not keep a video gesture alive.
 const contacts = (event) => Array.from(event.targetTouches ?? event.touches);
 
 // Touch gestures share one logical cursor. Both modes use the existing window

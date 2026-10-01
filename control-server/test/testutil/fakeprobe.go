@@ -26,7 +26,8 @@ const (
 
 // Fake probe output, so tests can assert on it.
 const (
-	FakeWindowJSON = `[{"handle":1,"title":"Notepad","process_id":42,"process_name":"notepad","class_name":"Notepad"}]`
+	FakeIconPNG    = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+	FakeWindowJSON = `[{"handle":1,"title":"Notepad","process_id":42,"process_name":"notepad","class_name":"Notepad","icon_png":"` + FakeIconPNG + `"}]`
 	FakePNG        = "PNG-BYTES"
 	FakeStderr     = "capture exploded"
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"share-app-host/internal/window"
+	"share-app-host/test/testutil"
 )
 
 var notepad = window.Info{Handle: 100, Title: "Untitled - Notepad", ProcessID: 42, ProcessName: "notepad", ClassName: "Notepad"}
@@ -75,19 +76,28 @@ func TestResponsesCarrySecurityHeaders(t *testing.T) {
 
 func TestListWindows(t *testing.T) {
 	e := newEnv(t)
-	e.windows.windows = []window.Info{notepad, {Handle: 200, Title: "Calc"}}
+	withIcon := notepad
+	withIcon.IconPNG = testutil.FakeIconPNG
+	e.windows.windows = []window.Info{withIcon, {Handle: 200, Title: "Calc"}}
 
 	w := e.do("GET", "/api/windows", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("GET /api/windows = %d", w.Code)
 	}
 	got := decode[[]window.Info](t, w)
-	if len(got) != 2 || got[0] != notepad || got[1].Title != "Calc" {
+	if len(got) != 2 || got[0] != withIcon || got[1].Title != "Calc" {
 		t.Fatalf("windows = %+v", got)
 	}
 	// The wire format the web client reads.
 	if !strings.Contains(w.Body.String(), `"process_name":"notepad"`) || !strings.Contains(w.Body.String(), `"handle":100`) {
 		t.Fatalf("unexpected JSON field names: %s", w.Body.String())
+	}
+	var raw []map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw[0]["icon_png"]) != `"`+testutil.FakeIconPNG+`"` || raw[1]["icon_png"] != nil {
+		t.Fatalf("icon field was lost or an absent icon was included: %s", w.Body.String())
 	}
 }
 

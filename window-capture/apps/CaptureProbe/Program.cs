@@ -49,6 +49,7 @@ if (mode == "--list")
             process_id = window.ProcessId,
             process_name = window.ProcessName,
             class_name = window.ClassName,
+            icon_png = window.IconPng,
         }),
         new JsonSerializerOptions
         {

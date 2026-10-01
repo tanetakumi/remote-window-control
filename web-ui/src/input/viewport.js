@@ -93,7 +93,6 @@ export function attachViewportSync(sendControl, options = {}) {
   if (screen.orientation?.addEventListener) listen(screen.orientation, "change", onOrientationChange);
 
   return {
-    triggerFullscreenSync,
     cleanup() {
       disposed = true;
       cancelAnimationFrame(animationId);
