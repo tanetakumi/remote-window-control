@@ -15,6 +15,7 @@ import (
 	"share-app-host/internal/input"
 	"share-app-host/internal/nativecapture"
 	"share-app-host/internal/signaling"
+	"share-app-host/internal/win32"
 	"share-app-host/internal/window"
 )
 
@@ -27,12 +28,12 @@ func New(cfg config.Config) *App {
 }
 
 func (a *App) Run() error {
-	if err := input.EnableDPIAwareness(); err != nil {
+	if err := win32.EnableDPIAwareness(); err != nil {
 		log.Printf("DPI awareness: %v", err)
 	}
 	captureBridge := nativecapture.NewBridge(a.cfg.BaseDir)
 	targets := window.NewSelection(captureBridge)
-	dispatcher := input.NewDispatcher(input.NewSendInputInjector(targets))
+	dispatcher := input.NewDispatcher(input.NewMessageInjector(targets))
 	signalingHub := signaling.NewHub(dispatcher, captureBridge, targets)
 	server := httpserver.New(a.cfg.ListenAddr, a.cfg.ClientDir, signalingHub, captureBridge, targets, a.cfg.BaseDir)
 	defer signalingHub.Close()

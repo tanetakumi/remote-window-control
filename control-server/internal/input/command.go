@@ -1,5 +1,27 @@
+// Package input turns the web client's input messages into actions on the
+// target window. Dispatcher validates commands and tracks held keys and
+// buttons; an Injector performs the actual input.
 package input
 
+// Command types sent by the web client.
+const (
+	TypeTap            = "input.tap"
+	TypeMouseMove      = "input.mouseMove"
+	TypeMouseDown      = "input.mouseDown"
+	TypeMouseUp        = "input.mouseUp"
+	TypeScroll         = "input.scroll"
+	TypeKeyDown        = "input.keyDown"
+	TypeKeyUp          = "input.keyUp"
+	TypeText           = "input.text"
+	TypeViewportResize = "viewport.resize"
+)
+
+// MaxMessageBytes is the largest control message accepted from a client, on
+// any transport.
+const MaxMessageBytes = 64 * 1024
+
+// Command is one input message. Pointer coordinates are normalised to the
+// captured window image (0..1).
 type Command struct {
 	Type             string  `json:"type"`
 	Button           string  `json:"button,omitempty"`
