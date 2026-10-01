@@ -11,7 +11,8 @@ import (
 // knownKeys are the only settings a .env file may contain. Unknown keys are
 // rejected so a typo is reported instead of silently ignored.
 var knownKeys = map[string]bool{
-	envAddr: true,
+	envAddr:         true,
+	envCaptureStats: true,
 }
 
 // ParseDotenv reads KEY=VALUE lines. Blank lines and lines starting with '#'

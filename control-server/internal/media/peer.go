@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"time"
 
 	pion "github.com/pion/webrtc/v4"
 )
@@ -27,6 +28,8 @@ type PeerOptions struct {
 	Source  Source
 	Target  Target
 	Encoder EncoderConfig
+	// StatsInterval, when positive, logs streaming statistics at this interval.
+	StatsInterval time.Duration
 	// Logf records lifecycle events; nil uses the host logger.
 	Logf func(string, ...any)
 
@@ -115,11 +118,12 @@ func NewPeer(opts PeerOptions) (*Peer, error) {
 	}
 	pipeline := NewPipeline(opts.Source, opts.Target, track, opts.Encoder)
 	pipeline.logf = opts.Logf
+	pipeline.StatsInterval = opts.StatsInterval
 
 	p.workers.Add(2)
 	go func() {
 		defer p.workers.Done()
-		drainRTCP(sender)
+		readRTCP(sender, pipeline.RequestKeyframe)
 	}()
 	go func() {
 		defer p.workers.Done()

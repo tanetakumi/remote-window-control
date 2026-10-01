@@ -36,13 +36,34 @@ const (
 
 // Probe runs the CaptureProbe executable.
 type Probe struct {
-	path string
+	path   string
+	stream StreamOptions
+}
+
+// StreamOptions are measurement settings applied to every capture stream.
+type StreamOptions struct {
+	// Stats makes the helper write dirty-region statistics to stderr, which
+	// ends up in the host log.
+	Stats bool
+	// VerifyStats additionally compares consecutive frames pixel by pixel. It
+	// implies Stats.
+	VerifyStats bool
+}
+
+func (o StreamOptions) args() []string {
+	switch {
+	case o.VerifyStats:
+		return []string{"--stats-verify"}
+	case o.Stats:
+		return []string{"--stats"}
+	}
+	return nil
 }
 
 // NewProbe returns a Probe for the CaptureProbe executable at path. The file
 // is only checked when a command runs, so it may be installed after startup.
-func NewProbe(path string) *Probe {
-	return &Probe{path: path}
+func NewProbe(path string, stream StreamOptions) *Probe {
+	return &Probe{path: path, stream: stream}
 }
 
 // ListWindows returns the windows that can be captured.

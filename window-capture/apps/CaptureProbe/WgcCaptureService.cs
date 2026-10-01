@@ -1,8 +1,11 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using WinRT;
+using Windows.Foundation.Metadata;
+using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
@@ -26,6 +29,21 @@ internal sealed class WgcCaptureService : IDisposable
     private FrameInfo _frame;
     private Exception? _fatalError;
     private volatile bool _disposed;
+    private readonly CaptureStats? _stats;
+    private bool _reportDirtyRegions;
+    private bool _dirtyRegionErrorLogged;
+
+    // stats, when given, receives every WGC frame.
+    public WgcCaptureService(CaptureStats? stats = null)
+    {
+        _stats = stats;
+    }
+
+    // Dirty regions arrived in Windows 11 24H2 (SDK 26100). Probe the API
+    // itself rather than the OS build.
+    private static readonly Lazy<bool> DirtyRegionsPresent = new(() =>
+        ApiInformation.IsPropertyPresent("Windows.Graphics.Capture.GraphicsCaptureSession", "DirtyRegionMode") &&
+        ApiInformation.IsPropertyPresent("Windows.Graphics.Capture.Direct3D11CaptureFrame", "DirtyRegions"));
 
     public static bool IsSupported()
     {
@@ -50,6 +68,10 @@ internal sealed class WgcCaptureService : IDisposable
 
         _framePool.FrameArrived += OnFrameArrived;
         _session = _framePool.CreateCaptureSession(_captureItem);
+        // The browser draws its own cursor overlay; the host cursor would only
+        // add frames and changed pixels to the stream.
+        _session.IsCursorCaptureEnabled = false;
+        _stats?.Start(EnableDirtyRegions());
         _session.StartCapture();
     }
 
@@ -163,6 +185,50 @@ internal sealed class WgcCaptureService : IDisposable
         }
     }
 
+    // Requests dirty regions for measurement only; the full frame is still
+    // rendered and copied (ReportOnly). Returns the mode for the stats line.
+    private string EnableDirtyRegions()
+    {
+        if (!DirtyRegionsPresent.Value)
+        {
+            return "unsupported";
+        }
+        try
+        {
+            _session!.DirtyRegionMode = GraphicsCaptureDirtyRegionMode.ReportOnly;
+            _reportDirtyRegions = true;
+            return "report-only";
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[capture] dirty region mode unavailable: {ex.Message}");
+            return "error";
+        }
+    }
+
+    // Reads the frame's dirty regions, or null when they are unavailable. A
+    // failure is logged once and treated as unknown, never as "no change".
+    private IReadOnlyList<RectInt32>? ReadDirtyRegions(Direct3D11CaptureFrame frame)
+    {
+        if (!_reportDirtyRegions)
+        {
+            return null;
+        }
+        try
+        {
+            return frame.DirtyRegions.ToArray();
+        }
+        catch (Exception ex)
+        {
+            if (!_dirtyRegionErrorLogged)
+            {
+                _dirtyRegionErrorLogged = true;
+                Console.Error.WriteLine($"[capture] dirty regions unavailable: {ex.Message}");
+            }
+            return null;
+        }
+    }
+
     private void InitializeDevices()
     {
         if (_d3dDevice is not null && _winrtDevice is not null)
@@ -229,8 +295,13 @@ internal sealed class WgcCaptureService : IDisposable
                     DirectXPixelFormat.B8G8R8A8UIntNormalized,
                     2,
                     frame.ContentSize);
+                _stats?.MarkResized();
                 return;
             }
+
+            // Read before the frame is disposed; it describes this frame only.
+            var dirtyRegions = _stats is null ? null : ReadDirtyRegions(frame);
+            var copyStarted = Stopwatch.GetTimestamp();
 
             var surfaceInterop = frame.Surface.As<IDirect3DDxgiInterfaceAccess>();
             var resourceGuid = typeof(ID3D11Texture2D).GUID;
@@ -256,7 +327,7 @@ internal sealed class WgcCaptureService : IDisposable
                     return;
                 }
 
-                StoreFrame(mapped.DataPointer, copyWidth, copyHeight, checked((int)mapped.RowPitch));
+                StoreFrame(mapped.DataPointer, copyWidth, copyHeight, checked((int)mapped.RowPitch), dirtyRegions, copyStarted);
             }
             finally
             {
@@ -301,7 +372,7 @@ internal sealed class WgcCaptureService : IDisposable
         _stagingTexture = _d3dDevice!.CreateTexture2D(stagingDescription);
     }
 
-    private void StoreFrame(IntPtr pixels, int width, int height, int sourcePitch)
+    private void StoreFrame(IntPtr pixels, int width, int height, int sourcePitch, IReadOnlyList<RectInt32>? dirtyRegions, long copyStarted)
     {
         if (sourcePitch <= 0 || width <= 0 || height <= 0)
         {
@@ -347,6 +418,8 @@ internal sealed class WgcCaptureService : IDisposable
             }
 
             _frame = new FrameInfo(safeWidth, height, _frame.FrameId + 1);
+            _stats?.RecordFrame(safeWidth, height, dirtyRegions, Stopwatch.GetTimestamp() - copyStarted,
+                _frameBuffer.AsSpan(0, requiredSize));
         }
 
         _frameEvent.Set();

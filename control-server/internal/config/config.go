@@ -12,9 +12,21 @@ import (
 )
 
 const (
-	envAddr = "SHARE_APP_ADDR"
+	envAddr         = "SHARE_APP_ADDR"
+	envCaptureStats = "SHARE_APP_CAPTURE_STATS"
 
 	defaultAddr = "127.0.0.1:8443"
+)
+
+// Capture measurement modes (SHARE_APP_CAPTURE_STATS).
+const (
+	// CaptureStatsOff writes no periodic measurements.
+	CaptureStatsOff = "off"
+	// CaptureStatsOn logs dirty-region and encoded-video statistics.
+	CaptureStatsOn = "on"
+	// CaptureStatsVerify also checks dirty regions against a pixel comparison
+	// of consecutive frames, at a noticeable CPU cost.
+	CaptureStatsVerify = "verify"
 )
 
 // Config is the resolved host configuration.
@@ -28,6 +40,8 @@ type Config struct {
 	ProbePath string
 	// FFmpegPath is the ffmpeg executable; a bare name is looked up on PATH.
 	FFmpegPath string
+	// CaptureStats is one of the CaptureStats* modes; off by default.
+	CaptureStats string
 }
 
 // Env is the process context a configuration is resolved from. It exists so
@@ -73,10 +87,18 @@ func LoadFrom(env Env) (Config, error) {
 		return fallback
 	}
 
+	stats := setting(envCaptureStats, CaptureStatsOff)
+	switch stats {
+	case CaptureStatsOff, CaptureStatsOn, CaptureStatsVerify:
+	default:
+		return Config{}, fmt.Errorf("%s must be %s, %s or %s", envCaptureStats, CaptureStatsOff, CaptureStatsOn, CaptureStatsVerify)
+	}
+
 	return Config{
-		ListenAddr: setting(envAddr, defaultAddr),
-		ClientDir:  defaultClientDir(base),
-		ProbePath:  findProbe(base),
-		FFmpegPath: findFFmpeg(env.ExeDir),
+		ListenAddr:   setting(envAddr, defaultAddr),
+		ClientDir:    defaultClientDir(base),
+		ProbePath:    findProbe(base),
+		FFmpegPath:   findFFmpeg(env.ExeDir),
+		CaptureStats: stats,
 	}, nil
 }

@@ -29,6 +29,8 @@ type Browser struct {
 	// Replies receives every WebSocket message that is not WebRTC negotiation,
 	// such as "error" and "input.error".
 	Replies chan Reply
+	// Tracks receives the remote video track once its first packet arrives.
+	Tracks chan *pion.TrackRemote
 
 	writeMu sync.Mutex // gorilla allows one concurrent writer
 	mu      sync.Mutex // guards remote and pending
@@ -52,7 +54,7 @@ func ConnectBrowser(t *testing.T, address string, headers http.Header) *Browser 
 		_ = ws.Close()
 		t.Fatal(err)
 	}
-	b := &Browser{WS: ws, PC: pc, Replies: make(chan Reply, 32)}
+	b := &Browser{WS: ws, PC: pc, Replies: make(chan Reply, 32), Tracks: make(chan *pion.TrackRemote, 1)}
 	t.Cleanup(func() { _ = ws.Close(); _ = pc.Close() })
 
 	open := make(chan struct{})
@@ -60,6 +62,12 @@ func ConnectBrowser(t *testing.T, address string, headers http.Header) *Browser 
 		t.Fatal(err)
 	}
 	b.Control.OnOpen(func() { close(open) })
+	pc.OnTrack(func(track *pion.TrackRemote, _ *pion.RTPReceiver) {
+		select {
+		case b.Tracks <- track:
+		default:
+		}
+	})
 	if _, err = pc.AddTransceiverFromKind(pion.RTPCodecTypeVideo,
 		pion.RTPTransceiverInit{Direction: pion.RTPTransceiverDirectionRecvonly}); err != nil {
 		t.Fatal(err)

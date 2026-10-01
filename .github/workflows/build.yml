@@ -59,7 +59,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Smoke test window enumeration
         run: |
-          $probe = if (Test-Path dist/native/CaptureProbe.exe) { "dist/native/CaptureProbe.exe" } else { "window-capture/apps/CaptureProbe/bin/Release/net10.0-windows10.0.19041.0/win-x64/CaptureProbe.exe" }
+          $probe = if (Test-Path dist/native/CaptureProbe.exe) { "dist/native/CaptureProbe.exe" } else { "window-capture/apps/CaptureProbe/bin/Release/net10.0-windows10.0.26100.0/win-x64/CaptureProbe.exe" }
           $output = & $probe --list
           if ($LASTEXITCODE -ne 0) { throw "CaptureProbe --list failed with exit code $LASTEXITCODE" }
           $document = [System.Text.Json.JsonDocument]::Parse(($output -join "`n"))

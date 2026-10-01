@@ -21,7 +21,12 @@ import (
 	"share-app-host/internal/window"
 )
 
-const shutdownTimeout = 5 * time.Second
+const (
+	shutdownTimeout = 5 * time.Second
+	// statsInterval matches CaptureProbe's dirty-region summaries, so the two
+	// log lines can be read side by side.
+	statsInterval = 5 * time.Second
+)
 
 // Run starts the host and serves until interrupted. It returns nil after a
 // clean shutdown.
@@ -30,15 +35,27 @@ func Run(cfg config.Config) error {
 		log.Printf("DPI awareness: %v", err)
 	}
 
-	probe := capture.NewProbe(cfg.ProbePath)
+	measuring := cfg.CaptureStats != config.CaptureStatsOff
+	probe := capture.NewProbe(cfg.ProbePath, capture.StreamOptions{
+		Stats:       measuring,
+		VerifyStats: cfg.CaptureStats == config.CaptureStatsVerify,
+	})
+	var mediaStats time.Duration
+	if measuring {
+		mediaStats = statsInterval
+	}
+	if measuring {
+		log.Printf("capture measurement stats=%s", cfg.CaptureStats)
+	}
 	selection := window.NewSelection(probe)
 	dispatcher := input.NewDispatcher(input.NewMessageInjector(selection))
 
 	hub := session.NewHub(session.Options{
-		Dispatcher: dispatcher,
-		Source:     RestoringSource(media.ProbeSource(probe), RestoreWindow),
-		Target:     selection,
-		Encoder:    media.DefaultEncoderConfig(cfg.FFmpegPath),
+		Dispatcher:    dispatcher,
+		Source:        RestoringSource(media.ProbeSource(probe), RestoreWindow),
+		Target:        selection,
+		Encoder:       media.DefaultEncoderConfig(cfg.FFmpegPath),
+		StatsInterval: mediaStats,
 	})
 	defer hub.Close()
 

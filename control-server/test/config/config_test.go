@@ -9,7 +9,7 @@ import (
 	"share-app-host/internal/config"
 )
 
-const dotnetOutput = "net10.0-windows10.0.19041.0/win-x64"
+const dotnetOutput = "net10.0-windows10.0.26100.0/win-x64"
 
 func mkdir(t *testing.T, elem ...string) string {
 	t.Helper()
@@ -64,10 +64,11 @@ func TestDevelopmentCheckoutDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := config.Config{
-		ListenAddr: "127.0.0.1:8443",
-		ClientDir:  filepath.Join(root, "web-ui", "dist"),
-		ProbePath:  filepath.Join(root, "CaptureProbe", "CaptureProbe.exe"),
-		FFmpegPath: "ffmpeg",
+		ListenAddr:   "127.0.0.1:8443",
+		ClientDir:    filepath.Join(root, "web-ui", "dist"),
+		ProbePath:    filepath.Join(root, "CaptureProbe", "CaptureProbe.exe"),
+		FFmpegPath:   "ffmpeg",
+		CaptureStats: config.CaptureStatsOff,
 	}
 	if cfg != want {
 		t.Fatalf("got  %+v\nwant %+v", cfg, want)
@@ -238,5 +239,50 @@ func TestCaptureProbeLocationPreference(t *testing.T) {
 	touch(t, release)
 	if got := load(); got != release {
 		t.Fatalf("ProbePath = %q, want the release location ahead of builds", got)
+	}
+}
+
+func TestCaptureMeasurementSetting(t *testing.T) {
+	root, exeDir := checkout(t)
+	load := func(vars map[string]string) (config.Config, error) {
+		return config.LoadFrom(env(exeDir, root, vars))
+	}
+
+	cfg, err := load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CaptureStats != config.CaptureStatsOff {
+		t.Fatalf("default stats=%q", cfg.CaptureStats)
+	}
+
+	writeEnvFile(t, root, "SHARE_APP_CAPTURE_STATS=verify\n")
+	if cfg, err = load(nil); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CaptureStats != config.CaptureStatsVerify {
+		t.Fatalf(".env stats=%q", cfg.CaptureStats)
+	}
+	if cfg, err = load(map[string]string{"SHARE_APP_CAPTURE_STATS": "on"}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CaptureStats != config.CaptureStatsOn {
+		t.Fatalf("environment stats=%q", cfg.CaptureStats)
+	}
+
+	if _, err := load(map[string]string{"SHARE_APP_CAPTURE_STATS": "1"}); err == nil || !strings.Contains(err.Error(), "SHARE_APP_CAPTURE_STATS") {
+		t.Fatalf("error = %v, want one naming the setting", err)
+	}
+}
+
+// Idle encoding and cursor capture were measurement switches; both are now
+// fixed behaviour, so a leftover key in .env is reported rather than ignored.
+func TestEnvFileWithRemovedCaptureSettingsIsRejected(t *testing.T) {
+	for _, line := range []string{"SHARE_APP_IDLE_ENCODING=pause", "SHARE_APP_CAPTURE_CURSOR=off"} {
+		root, exeDir := checkout(t)
+		writeEnvFile(t, root, "SHARE_APP_ADDR=127.0.0.1:9000\n"+line+"\n")
+		if _, err := config.LoadFrom(env(exeDir, root, nil)); err == nil || !strings.Contains(err.Error(), "line 2") {
+			t.Fatalf("%s: error = %v, want one pointing at line 2", line, err)
+		}
 	}
 }

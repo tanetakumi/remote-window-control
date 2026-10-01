@@ -33,7 +33,8 @@ func (p *Probe) OpenStream(ctx context.Context, handle uint64) (*Stream, error) 
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	command := exec.CommandContext(ctx, p.path, "--stream", "--hwnd", fmt.Sprint(handle))
+	args := append([]string{"--stream", "--hwnd", fmt.Sprint(handle)}, p.stream.args()...)
+	command := exec.CommandContext(ctx, p.path, args...)
 	command.WaitDelay = killDelay
 
 	// Own the read end independently of exec.Cmd.Wait, so process exit cannot

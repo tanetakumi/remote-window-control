@@ -27,7 +27,7 @@ func TestEncoderArgsBaseline(t *testing.T) {
 		"-deadline", "realtime",
 		"-cpu-used", "4",
 		"-auto-alt-ref", "0",
-		"-g", "20",
+		"-g", "1000000",
 		"-f", "ivf", "pipe:1",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -44,7 +44,7 @@ func TestEncoderArgsFollowTheConfiguration(t *testing.T) {
 		{"-framerate", "30"},
 		{"-b:v", "2M"},
 		{"-crf", "20"},
-		{"-g", "60"}, // a keyframe every two seconds
+		{"-g", "1000000"}, // no periodic keyframes, whatever the rate
 	} {
 		i := slices.Index(args, pair[0])
 		if i < 0 || i+1 >= len(args) || args[i+1] != pair[1] {

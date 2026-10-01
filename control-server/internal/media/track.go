@@ -1,6 +1,7 @@
 package media
 
 import (
+	"github.com/pion/rtcp"
 	pion "github.com/pion/webrtc/v4"
 )
 
@@ -25,13 +26,20 @@ func addVideoTrack(pc *pion.PeerConnection) (*pion.TrackLocalStaticSample, *pion
 	return track, sender, nil
 }
 
-// drainRTCP reads and discards incoming RTCP until the sender is closed. The
-// interceptors only process feedback while it is being read.
-func drainRTCP(sender *pion.RTPSender) {
-	buffer := make([]byte, 1500)
+// readRTCP reads incoming RTCP until the sender is closed; the interceptors
+// (NACK retransmission, reports) only process feedback while it is being read.
+// A Picture Loss Indication or Full Intra Request calls onKeyframeRequest.
+func readRTCP(sender *pion.RTPSender, onKeyframeRequest func()) {
 	for {
-		if _, _, err := sender.Read(buffer); err != nil {
+		packets, _, err := sender.ReadRTCP()
+		if err != nil {
 			return
+		}
+		for _, packet := range packets {
+			switch packet.(type) {
+			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+				onKeyframeRequest()
+			}
 		}
 	}
 }

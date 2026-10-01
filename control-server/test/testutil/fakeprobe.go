@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,6 +20,8 @@ const (
 	EnvStreamFail = "RWC_FAKE_PROBE_STREAM_FAIL"
 	// EnvCommandFail makes the fake one-shot commands write to stderr and exit non-zero.
 	EnvCommandFail = "RWC_FAKE_PROBE_COMMAND_FAIL"
+	// EnvArgsFile names a file the fake writes its arguments to, one per line.
+	EnvArgsFile = "RWC_FAKE_PROBE_ARGS_FILE"
 )
 
 // Fake probe output, so tests can assert on it.
@@ -72,6 +75,12 @@ func InstallFakeProbe(t *testing.T) string {
 }
 
 func runFakeProbe(args []string) int {
+	if path := os.Getenv(EnvArgsFile); path != "" {
+		if err := os.WriteFile(path, []byte(strings.Join(args, "\n")), 0o600); err != nil {
+			fmt.Fprintln(os.Stderr, "fake probe:", err)
+			return 2
+		}
+	}
 	if os.Getenv(EnvCommandFail) == "1" && !slices.Contains(args, "--stream") {
 		fmt.Fprintln(os.Stderr, FakeStderr)
 		return 2

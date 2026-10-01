@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"os/exec"
+	"regexp"
 	"testing"
 	"time"
 
@@ -26,34 +27,56 @@ func (s *recordingSink) keyframes() int {
 	return count
 }
 
-func TestStaticWindowRecoversWhenTheFirstKeyframeIsLost(t *testing.T) {
+func TestKeyframeRequestWhileIdleSendsADecodableKeyframe(t *testing.T) {
+	pipeline, sink := startStreaming(t, singleFrame(fakeFrameSize))
+	idle(t, sink)
+	keyframes := sink.keyframes()
+
+	requested := time.Now()
+	pipeline.RequestKeyframe()
+	eventually(t, 5*time.Second, "a keyframe after the request", func() bool { return sink.keyframes() > keyframes })
+
+	samples := sink.snapshot()
+	last := samples[len(samples)-1]
+	decodeKeyframe(t, last.Data, fakeFrameSize)
+
+	// The RTP clock (the sum of durations before a sample) must follow the
+	// wall clock across the idle gap, not advance one nominal frame.
+	var mediaTime time.Duration
+	for _, sample := range samples[:len(samples)-1] {
+		mediaTime += sample.Duration
+	}
+	wall := last.Timestamp.Sub(samples[0].Timestamp)
+	if diff := mediaTime - wall; diff < -50*time.Millisecond || diff > 250*time.Millisecond {
+		t.Fatalf("media time %s for wall time %s", mediaTime, wall)
+	}
+	if last.Timestamp.Sub(requested) > 2*time.Second {
+		t.Fatalf("keyframe took %s", last.Timestamp.Sub(requested))
+	}
+}
+
+func TestKeyframeRequestAnsweredByTheNextKeyframeDoesNotRestart(t *testing.T) {
 	requireFFmpeg(t)
-	source := newFakeSource(singleFrame(fakeFrameSize))
+	logs := captureLog(t)
 	sink := &recordingSink{}
-	pipeline := media.NewPipeline(source.source(), newFakeTarget(), sink, defaultEncoder())
+	pipeline := media.NewPipeline(newFakeSource(singleFrame(fakeFrameSize)).source(), newFakeTarget(), sink, defaultEncoder())
+	// The encoder's first frame is a keyframe written after this request.
+	pipeline.RequestKeyframe()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	done := runWindow(ctx, pipeline, 1, make(chan struct{}))
-	eventually(t, 5*time.Second, "a second keyframe without another capture frame", func() bool { return sink.keyframes() >= 2 })
-	cancel()
-	if err := receive(t, done, settle, "static stream shutdown"); err != nil {
+	changed := make(chan struct{})
+	done := runWindow(ctx, pipeline, 1, changed)
+	eventually(t, 10*time.Second, "the first keyframe", func() bool { return sink.keyframes() > 0 })
+	time.Sleep(1500 * time.Millisecond)
+	close(changed)
+	if err := receive(t, done, 4*time.Second, "RunWindow to stop"); err != nil {
 		t.Fatal(err)
 	}
-	if len(source.openedHandles()) != 1 || !source.stream(0).isClosed() {
-		t.Fatal("static capture was restarted or not closed")
+	stopped := regexp.MustCompile(`capture stopped hwnd=1 .*`).FindString(logs.String())
+	if stopped == "" || field(t, stopped, "forced_keyframes") != 0 {
+		t.Fatalf("stop line %q", stopped)
 	}
-	// Discard the first encoded keyframe as if it were lost in transit. The
-	// next keyframe must be complete and independently decodable by ffmpeg.
-	sink.mu.Lock()
-	var recovered []byte
-	for _, sample := range sink.samples[1:] {
-		if keyframe(sample.Data) {
-			recovered = sample.Data
-			break
-		}
-	}
-	sink.mu.Unlock()
-	decodeKeyframe(t, recovered, fakeFrameSize)
 }
 
 func decodeKeyframe(t *testing.T, payload []byte, size int) {

@@ -84,6 +84,18 @@ func steady(size int) readFunc {
 	}
 }
 
+// changing produces size x size frames at about 60 per second whose pixels
+// differ every time.
+func changing(size int) readFunc {
+	return func(s *fakeStream, buffer []byte) (capture.Frame, error) {
+		frame, err := steady(size)(s, buffer)
+		if err == nil {
+			frame.Data[0] = byte(s.nextID)
+		}
+		return frame, err
+	}
+}
+
 // singleFrame models a static window: WGC gives one image, then no updates.
 func singleFrame(size int) readFunc {
 	return func(s *fakeStream, buffer []byte) (capture.Frame, error) {
@@ -167,6 +179,7 @@ func (t *fakeTarget) Select(handle uint64) {
 // ---- sink -------------------------------------------------------------------
 
 // recordingSink collects the samples written by the encoder.
+// Empty samples only advance the RTP clock; Timestamp is set to the write time.
 type recordingSink struct {
 	mu      sync.Mutex
 	samples []pionmedia.Sample
@@ -175,8 +188,29 @@ type recordingSink struct {
 func (s *recordingSink) WriteSample(sample pionmedia.Sample) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	sample.Timestamp = time.Now()
 	s.samples = append(s.samples, sample)
 	return nil
+}
+
+// encoded returns the number of samples that carry video.
+func (s *recordingSink) encoded() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for _, sample := range s.samples {
+		if len(sample.Data) > 0 {
+			count++
+		}
+	}
+	return count
+}
+
+// snapshot returns a copy of the samples written so far.
+func (s *recordingSink) snapshot() []pionmedia.Sample {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.samples)
 }
 
 func (s *recordingSink) count() int {

@@ -89,6 +89,7 @@ The executable reads a literal `KEY=VALUE` `.env` file; it does not execute shel
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `SHARE_APP_ADDR` | `127.0.0.1:8443` | HTTP listen address; the port does not imply TLS |
+| `SHARE_APP_CAPTURE_STATS` | `off` | Measurement logging: `on` logs a capture and an encoded-video summary every 5 s; `verify` also checks WGC dirty regions against a per-pixel comparison of consecutive frames (CPU-heavy). Dirty regions need Windows 11 24H2 or later; elsewhere the summary reports `dirty=unsupported` |
 
 Environment variables override the file. Single or double quotes around a whole value are optional; inline shell expansions and inline comments are not interpreted. The web client is found automatically: `web/` beside the executable in a release, `web-ui/dist/` in a checkout. Only `.html`, `.css` and `.js` files within that directory are served; parent directories, directory listings, hidden files and escaping symlinks are rejected.
 
@@ -96,7 +97,7 @@ The application has no login, shared secret, access tokens or authentication end
 
 For external access, run Cloudflare Tunnel on the Windows host and route the public hostname to `http://127.0.0.1:8443`. Protect the entire hostname with Cloudflare Access, including `/api/*` and `/ws`, and enable token validation in `cloudflared` using [Protect with Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/). Keep the origin reachable only through the trusted proxy for remote clients. Preserve the public HTTP `Host` header so the application's Origin checks continue to work. Local loopback access requires no authentication; Cloudflare-specific integration remains outside the application code.
 
-When upgrading, remove `SHARE_APP_SECRET` and `SHARE_APP_CLIENT_DIR` from existing `.env` files; they are no longer supported configuration keys, and the host refuses to start with an error naming the offending line. Client-side credential storage and secret-bearing URLs are no longer used.
+When upgrading, remove `SHARE_APP_SECRET`, `SHARE_APP_CLIENT_DIR`, `SHARE_APP_IDLE_ENCODING` and `SHARE_APP_CAPTURE_CURSOR` from existing `.env` files; they are no longer supported configuration keys, and the host refuses to start with an error naming the offending line. Client-side credential storage and secret-bearing URLs are no longer used.
 
 Client URLs follow the page origin, including HTTPS/WSS when HTTPS is supplied externally. HTTPS termination, domains, tunnels, NAT traversal and relay provisioning are managed separately. HTTP reachability does not establish WebRTC media reachability. Safari features requiring a secure origin should be tested through a separately supplied HTTPS URL.
 
@@ -114,7 +115,7 @@ The remote video is touch-only, with two modes selected using the Input mode con
 | Two-finger tap | Right-click at the cursor | Right-click at the center of the touches |
 | Two-finger slide | Scroll at the cursor | Scroll at the center where the gesture began |
 
-Physical mouse hover, buttons and wheel input are not forwarded. Pinches are suppressed rather than sent as scrolling; video zoom is not implemented. Scrolling is vertical, uses the same direction for one and two fingers, and converts 100 CSS pixels into one wheel notch while accumulating smaller movements. New gestures must begin inside the displayed image; letterbox margins cannot click the window. Logical cursor coordinates are preserved across mode changes and video resizing, and start at the center for each new connection. The visible cursor is an overlay for the selected window, rather than the host's physical Windows cursor.
+Physical mouse hover, buttons and wheel input are not forwarded. Pinches are suppressed rather than sent as scrolling; video zoom is not implemented. Scrolling is vertical, uses the same direction for one and two fingers, and converts 100 CSS pixels into one wheel notch while accumulating smaller movements. New gestures must begin inside the displayed image; letterbox margins cannot click the window. Logical cursor coordinates are preserved across mode changes and video resizing, and start at the center for each new connection. The visible cursor is an overlay for the selected window, rather than the host's physical Windows cursor; the host cursor is never captured.
 
 Text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where supported, and bitrate display are retained. Composing text stays local until committed. Held input is released on gesture cancellation, blur, page hide, mode changes, disconnect and target changes. After a gesture is interrupted, remaining contacts are ignored until all fingers lift. Win32 text and scroll calls have bounded waits.
 
@@ -131,7 +132,7 @@ Invoke-RestMethod 'http://127.0.0.1:8443/api/target-window' -Method Post -Conten
 Invoke-WebRequest 'http://127.0.0.1:8443/api/snapshot' -OutFile local-copy.png
 ```
 
-Streaming uses a single long-lived capture process and encoder, never one process per frame. The newest captured frame is re-encoded at the configured rate even when the window sends no new one, so a static window keeps producing video and periodic keyframes.
+Streaming uses a single long-lived capture process and encoder, never one process per frame. The newest captured frame is encoded at the configured rate for one second after each change, which lets the encoder refine its quality, and then once per second while the window stays the same; frames whose pixels match the previous one do not count as changes. That heartbeat costs a static delta frame (a few hundred bytes) and keeps browsers from requesting a keyframe, which libwebrtc does when no decodable frame arrives for 3 s. There are no periodic keyframes: loss is repaired by NACK retransmission, and a browser Picture Loss Indication or Full Intra Request that no later keyframe has answered restarts the encoder, at most once per second, so that its next frame is a keyframe. RTP timestamps follow the wall clock across idle periods, encoder restarts and target changes.
 
 ## Current distribution status
 
@@ -184,5 +185,6 @@ Key implementation locations:
 | HTTP API, static serving and origin guard | `control-server/internal/httpapi/` |
 | Native stream protocol | `window-capture/apps/CaptureProbe/Program.cs` |
 | WGC lifecycle and copying | `window-capture/apps/CaptureProbe/WgcCaptureService.cs` |
+| Dirty-region measurement summaries | `window-capture/apps/CaptureProbe/CaptureStats.cs` |
 
-The control server resolves CaptureProbe from release `CaptureProbe/CaptureProbe.exe`, or development `window-capture/apps/CaptureProbe/bin/{Debug,Release}/net10.0-windows10.0.19041.0/win-x64/CaptureProbe.exe`. Verify Windows/iPhone compatibility, end-to-end performance gains and self-contained release readiness on the corresponding platforms before making those claims.
+The control server resolves CaptureProbe from release `CaptureProbe/CaptureProbe.exe`, or development `window-capture/apps/CaptureProbe/bin/{Debug,Release}/net10.0-windows10.0.26100.0/win-x64/CaptureProbe.exe`. Verify Windows/iPhone compatibility, end-to-end performance gains and self-contained release readiness on the corresponding platforms before making those claims.

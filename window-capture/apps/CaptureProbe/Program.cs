@@ -4,6 +4,7 @@ using CaptureProbe;
 
 string? mode = null;
 nint? hwnd = null;
+string? stats = null;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i].ToLowerInvariant())
@@ -22,12 +23,18 @@ for (var i = 0; i < args.Length; i++)
             }
             hwnd = (nint)handle;
             break;
+        case "--stats":
+        case "--stats-verify":
+            if (stats is not null) return Usage();
+            stats = args[i].ToLowerInvariant();
+            break;
         default:
             return Usage();
     }
 }
 
-if (mode is null || (mode == "--list" ? hwnd is not null : hwnd is null))
+if (mode is null || (mode == "--list" ? hwnd is not null : hwnd is null) ||
+    (mode != "--stream" && stats is not null))
 {
     return Usage();
 }
@@ -53,7 +60,8 @@ if (mode == "--list")
 using var stdout = Console.OpenStandardOutput();
 if (mode == "--stream")
 {
-    StreamFrames(hwnd!.Value, stdout);
+    var captureStats = stats is null ? null : new CaptureStats(stats == "--stats-verify", Console.Error);
+    StreamFrames(hwnd!.Value, stdout, captureStats);
 }
 else
 {
@@ -63,13 +71,15 @@ return 0;
 
 static int Usage()
 {
-    Console.Error.WriteLine("usage: CaptureProbe --list | --hwnd <handle> --stream | --hwnd <handle> --stdout-png");
+    Console.Error.WriteLine("usage: CaptureProbe --list | --hwnd <handle> --stream [--stats | --stats-verify] | --hwnd <handle> --stdout-png");
     return 1;
 }
 
-static void StreamFrames(nint hwnd, Stream stdout)
+// stats, when given, writes dirty-region measurements to stderr; stdout carries
+// only frames.
+static void StreamFrames(nint hwnd, Stream stdout, CaptureStats? stats)
 {
-    using var capture = new WgcCaptureService();
+    using var capture = new WgcCaptureService(stats);
     capture.StartCapture(hwnd);
 
     var header = new byte[24];
@@ -78,6 +88,7 @@ static void StreamFrames(nint hwnd, Stream stdout)
 
     while (true)
     {
+        stats?.ReportIfDue();
         if (capture.WaitForFrame(lastSeenFrameId, 1000) <= 0)
         {
             continue;
@@ -95,6 +106,7 @@ static void StreamFrames(nint hwnd, Stream stdout)
         BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(16, 8), frame.FrameId);
 
         lastSeenFrameId = frame.FrameId;
+        stats?.RecordStreamed();
         stdout.Write(header);
         stdout.Write(frameBuffer.AsSpan(0, frame.BytesWritten));
         stdout.Flush();

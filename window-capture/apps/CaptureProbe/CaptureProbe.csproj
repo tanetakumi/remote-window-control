@@ -4,7 +4,10 @@
     <OutputType>Exe</OutputType>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <!-- Compile against the 26100 SDK for WGC dirty regions; keep running on 19041
+         and check newer APIs at run time (see WgcCaptureService). -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>

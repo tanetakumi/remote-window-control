@@ -22,6 +22,13 @@ const (
 	DefaultBitrate = "6M"
 	DefaultCRF     = 10
 
+	// keyframeInterval is the libvpx keyframe interval in frames: large
+	// enough that keyframes come only from encoder starts, which also answer
+	// browser keyframe requests (see Pipeline). A periodic keyframe of a text
+	// screen costs hundreds of kilobytes, a static delta frame a few hundred
+	// bytes.
+	keyframeInterval = 1_000_000
+
 	// encoderStopWait is how long a closing encoder may take to flush and exit
 	// after its input ends, before it is killed.
 	encoderStopWait = 2 * time.Second
@@ -31,7 +38,7 @@ const (
 type EncoderConfig struct {
 	// FFmpegPath is the ffmpeg executable; a bare name is looked up on PATH.
 	FFmpegPath string
-	// FPS is the capture and encode rate. Keyframes are sent every 2*FPS frames.
+	// FPS is the encode rate while the window changes; see Pipeline.
 	FPS int
 	// Bitrate is the target bitrate in ffmpeg notation, such as "6M".
 	Bitrate string
@@ -61,7 +68,7 @@ func (c EncoderConfig) Args(width, height int) []string {
 		"-deadline", "realtime",
 		"-cpu-used", "4",
 		"-auto-alt-ref", "0",
-		"-g", strconv.Itoa(c.FPS * 2),
+		"-g", strconv.Itoa(keyframeInterval),
 		"-f", "ivf", "pipe:1",
 	}
 }

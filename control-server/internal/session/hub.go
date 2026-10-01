@@ -31,6 +31,8 @@ type Options struct {
 	Source  media.Source
 	Target  media.Target
 	Encoder media.EncoderConfig
+	// StatsInterval, when positive, logs streaming statistics at this interval.
+	StatsInterval time.Duration
 }
 
 // Hub serves the control WebSocket. Only one connection is active at a time;
@@ -99,10 +101,11 @@ func (h *Hub) serve(c *conn) {
 		}
 	}
 	peer, err := media.NewPeer(media.PeerOptions{
-		Logf:    c.logf,
-		Source:  h.opts.Source,
-		Target:  h.opts.Target,
-		Encoder: h.opts.Encoder,
+		Logf:          c.logf,
+		Source:        h.opts.Source,
+		Target:        h.opts.Target,
+		Encoder:       h.opts.Encoder,
+		StatsInterval: h.opts.StatsInterval,
 		OnICE: func(candidate pion.ICECandidateInit) {
 			c.send(message{Type: typeICE, Candidate: &candidate})
 		},

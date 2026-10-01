@@ -13,7 +13,7 @@ import (
 //     control-server/go.mod.
 
 // probeBuildDir is where `dotnet build` places CaptureProbe in a checkout.
-const probeBuildDir = "net10.0-windows10.0.19041.0/win-x64"
+const probeBuildDir = "net10.0-windows10.0.26100.0/win-x64"
 
 // resolveBaseDir returns the directory that holds the client, CaptureProbe and
 // the optional .env file.

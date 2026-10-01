@@ -1,7 +1,7 @@
 {
   "version": 1,
   "dependencies": {
-    "net10.0-windows10.0.19041": {
+    "net10.0-windows10.0.26100": {
       "Microsoft.Windows.CsWinRT": {
         "type": "Direct",
         "requested": "[2.3.1, )",
@@ -62,6 +62,6 @@
         "contentHash": "KK+SjNSuKdP+zbavekubi+vaeb1Jo4k87ZF6CMkVWjr6RjJwc8peVtmgzXXDIMy4ZC3ZISyk3llY3q65ISOkBQ=="
       }
     },
-    "net10.0-windows10.0.19041/win-x64": {}
+    "net10.0-windows10.0.26100/win-x64": {}
   }
 }
