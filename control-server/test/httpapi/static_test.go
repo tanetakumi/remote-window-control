@@ -38,7 +38,6 @@ func TestStaticServesAllowedFiles(t *testing.T) {
 	e.writeClientFile(t, "index.html", "<html>home</html>")
 	e.writeClientFile(t, "assets/app.js", "console.log(1)")
 	e.writeClientFile(t, "assets/app.css", "body{}")
-	e.writeClientFile(t, "favicon.ico", "icon")
 
 	tests := []struct {
 		path, body, contentType string
@@ -47,7 +46,6 @@ func TestStaticServesAllowedFiles(t *testing.T) {
 		{"/index.html", "<html>home</html>", "text/html"},
 		{"/assets/app.js", "console.log(1)", "javascript"},
 		{"/assets/app.css", "body{}", "text/css"},
-		{"/favicon.ico", "icon", ""},
 	}
 	for _, tt := range tests {
 		w := e.do("GET", tt.path, "")
@@ -79,9 +77,14 @@ func TestStaticRefusesOtherFileTypesAndDirectories(t *testing.T) {
 	e.writeClientFile(t, "data.json", "{}")
 	e.writeClientFile(t, "page.php", "<?php")
 	e.writeClientFile(t, "noextension", "x")
+	// Types the client does not ship are not served either.
+	for _, name := range []string{"logo.png", "logo.svg", "favicon.ico", "photo.jpg", "photo.webp", "font.woff2"} {
+		e.writeClientFile(t, name, "x")
+	}
 	e.writeClientFile(t, "dir.js/inner.txt", "x") // a directory named like a script
 
-	for _, path := range []string{"/data.json", "/page.php", "/noextension", "/dir.js", "/dir.js/", "/assets/", "/.git/config"} {
+	for _, path := range []string{"/data.json", "/page.php", "/noextension", "/dir.js", "/dir.js/", "/assets/", "/.git/config",
+		"/logo.png", "/logo.svg", "/favicon.ico", "/photo.jpg", "/photo.webp", "/font.woff2"} {
 		if w := e.do("GET", path, ""); w.Code != http.StatusNotFound && w.Code != http.StatusMovedPermanently {
 			t.Errorf("GET %s = %d, want 404", path, w.Code)
 		}

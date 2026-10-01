@@ -75,7 +75,6 @@ func New(opts Options) *Server {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/windows", s.handleListWindows)
 	mux.HandleFunc("GET /api/target-window", s.handleGetTarget)
 	mux.HandleFunc("POST /api/target-window", s.handleSelectTarget)

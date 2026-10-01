@@ -25,7 +25,7 @@ func decode[T any](t *testing.T, w *httptest.ResponseRecorder) T {
 func TestEndpointsRejectCrossOriginRequests(t *testing.T) {
 	e := newEnv(t)
 	e.writeClientFile(t, "index.html", "client")
-	for _, target := range []string{"/api/config", "/api/windows", "/api/target-window", "/api/snapshot", "/host-ui", "/ws", "/"} {
+	for _, target := range []string{"/api/windows", "/api/target-window", "/api/snapshot", "/host-ui", "/ws", "/"} {
 		if w := e.do("GET", target, "https://other-host"); w.Code != http.StatusForbidden {
 			t.Errorf("cross-origin GET %s = %d, want 403", target, w.Code)
 		}
@@ -44,8 +44,8 @@ func TestEndpointsRejectCrossOriginRequests(t *testing.T) {
 func TestEndpointsAcceptTheSameOrigin(t *testing.T) {
 	e := newEnv(t)
 	for _, origin := range []string{"", "http://host:8443", "https://host:8443"} { // the last is a TLS proxy
-		if w := e.do("GET", "/api/config", origin); w.Code != http.StatusOK {
-			t.Errorf("origin %q: GET /api/config = %d", origin, w.Code)
+		if w := e.do("GET", "/api/windows", origin); w.Code != http.StatusOK {
+			t.Errorf("origin %q: GET /api/windows = %d", origin, w.Code)
 		}
 	}
 }
@@ -54,7 +54,7 @@ func TestResponsesCarrySecurityHeaders(t *testing.T) {
 	e := newEnv(t)
 	e.writeClientFile(t, "index.html", "client")
 
-	for _, target := range []string{"/api/config", "/api/windows", "/", "/host-ui", "/missing"} {
+	for _, target := range []string{"/api/windows", "/", "/host-ui", "/missing"} {
 		w := e.do("GET", target, "")
 		if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 			t.Errorf("%s: X-Content-Type-Options = %q", target, got)
@@ -63,37 +63,13 @@ func TestResponsesCarrySecurityHeaders(t *testing.T) {
 			t.Errorf("%s: Referrer-Policy = %q", target, got)
 		}
 	}
-	if got := e.do("GET", "/api/config", "").Header().Get("Cache-Control"); got != "no-store" {
+	if got := e.do("GET", "/api/windows", "").Header().Get("Cache-Control"); got != "no-store" {
 		t.Errorf("API Cache-Control = %q", got)
 	}
 	// Even a refused request must not be cached or sniffed.
 	w := e.do("GET", "/api/windows", "https://other-host")
 	if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("headers missing on a refused request: %v", w.Header())
-	}
-}
-
-func TestConfig(t *testing.T) {
-	e := newEnv(t)
-	type configResponse struct {
-		WebRTC       struct{ ICEServers []string } `json:"webrtc"`
-		TargetWindow window.Info                   `json:"target_window"`
-	}
-
-	w := e.do("GET", "/api/config", "")
-	if w.Code != http.StatusOK || !strings.HasPrefix(w.Header().Get("Content-Type"), "application/json") {
-		t.Fatalf("GET /api/config = %d %q", w.Code, w.Header().Get("Content-Type"))
-	}
-	if !strings.Contains(w.Body.String(), `"iceServers":[]`) {
-		t.Fatalf("iceServers must be an empty array, not null: %s", w.Body.String())
-	}
-	if got := decode[configResponse](t, w); got.TargetWindow != (window.Info{}) {
-		t.Fatalf("target_window with nothing selected = %+v", got.TargetWindow)
-	}
-
-	e.windows.current = &notepad
-	if got := decode[configResponse](t, e.do("GET", "/api/config", "")); got.TargetWindow != notepad {
-		t.Fatalf("target_window = %+v", got.TargetWindow)
 	}
 }
 

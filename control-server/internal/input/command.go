@@ -21,12 +21,12 @@ const (
 const MaxMessageBytes = 64 * 1024
 
 // Command is one input message. Pointer coordinates are normalised to the
-// captured window image (0..1).
+// captured window image (0..1). Only the fields the web client sends are
+// declared; anything else in the JSON is ignored.
 type Command struct {
 	Type             string  `json:"type"`
 	Button           string  `json:"button,omitempty"`
 	Key              string  `json:"key,omitempty"`
-	Code             string  `json:"code,omitempty"`
 	Text             string  `json:"text,omitempty"`
 	X                float64 `json:"x,omitempty"`
 	Y                float64 `json:"y,omitempty"`
@@ -35,8 +35,4 @@ type Command struct {
 	Width            int     `json:"width,omitempty"`
 	Height           int     `json:"height,omitempty"`
 	DevicePixelRatio float64 `json:"devicePixelRatio,omitempty"`
-	AltKey           bool    `json:"altKey,omitempty"`
-	CtrlKey          bool    `json:"ctrlKey,omitempty"`
-	ShiftKey         bool    `json:"shiftKey,omitempty"`
-	MetaKey          bool    `json:"metaKey,omitempty"`
 }

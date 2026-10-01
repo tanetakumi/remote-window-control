@@ -7,12 +7,13 @@ import (
 	"strings"
 )
 
-// staticExtensions are the only file types served from the client directory.
+// staticExtensions are the only file types served from the client directory:
+// what the web client's build produces. Add a type here if the client starts
+// shipping one.
 var staticExtensions = map[string]bool{
-	".html": true, ".css": true, ".js": true,
-	".png": true, ".svg": true, ".ico": true,
-	".jpg": true, ".jpeg": true, ".webp": true,
-	".woff": true, ".woff2": true,
+	".html": true,
+	".css":  true,
+	".js":   true,
 }
 
 // handleStatic serves the web client. Access is limited to regular files of an
