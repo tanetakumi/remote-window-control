@@ -35,16 +35,38 @@ The web UI is served by the Windows machine but executes in the phone browser. T
 - `.gitignore` excludes generated artifacts, local secrets, certificates and snapshots.
 - `.env.example` documents executable configuration; `LICENSE` contains the project license.
 - `.github/distribution/はじめにお読みください.txt` is copied into the root of the Windows distribution ZIP.
-- `.node-version` and `global.json` pin SDKs and are consumed by CI and .NET respectively; Go is pinned in `control-server/go.mod`.
+- `web-ui/package.json` declares the supported Node.js range used by CI; `global.json` pins the .NET SDK, and Go is pinned in `control-server/go.mod`.
 - `.github/renovate.json` retains dependency update configuration; workflow definitions also live under `.github/`.
 
 ## Build
 
-GitHub Actions builds and tests the application and prepares the Windows distribution. Use the Actions artifact or GitHub Release ZIP for installation; local build and runner setup scripts are not needed.
+GitHub Actions and the local build script build, test, and prepare the Windows distribution with the same directory layout. You can use an Actions artifact, a GitHub Release ZIP, or a local build for installation.
 
-Install the versions pinned in `.node-version`, `global.json` and `control-server/go.mod`: Node 24.21.0, .NET SDK 10.0.401 and Go 1.27.1. Streaming currently also requires an ffmpeg build with `libvpx` on PATH, and the .NET 10 runtime for the framework-dependent helper.
+Install versions matching `web-ui/package.json`, `global.json` and `control-server/go.mod`: Node.js `>=22.12.0 <25`, .NET SDK 10.0.401 and Go 1.27.1. Streaming currently also requires an ffmpeg build with `libvpx` on PATH, and the .NET 10 runtime for the framework-dependent helper.
 
-For local development on Windows, run the following commands from PowerShell in the repository root. The required build order is web UI → window capture → control server:
+With these tools and FFmpeg on `PATH`, run from the repository root:
+
+```powershell
+node scripts/build.mjs
+```
+
+The script checks Node.js against `web-ui/package.json`, verifies the pinned .NET and Go versions and `libvpx` support, then runs `npm ci`, the web build/tests, locked .NET restore, Release build/publish, and the Go build, vet, and fresh tests in the same order as CI. On Windows it also smoke-tests `CaptureProbe --list`. On Linux/macOS it cross-builds the Windows x64 binaries, runs the Go tests on the local operating system, and skips the Windows-only enumeration test. It uses the installed tools without installing SDKs or FFmpeg. CI currently uses FFmpeg 8.1.1; the local script accepts an installed FFmpeg with `libvpx` support.
+
+The complete output is `dist/share-app/`:
+
+```text
+dist/share-app/
+  share-host.exe
+  CaptureProbe/
+  web/
+  .env
+  LICENSE
+  はじめにお読みください.txt
+```
+
+Builds replace the generated executable and assets after all checks pass. An existing distribution `.env`, optional `ffmpeg.exe`, and runtime logs are retained; a new `.env` defaults to `SHARE_APP_ADDR=127.0.0.1:8443`. Intermediate .NET publish files are temporary. `web-ui/dist/` is only the frontend output; `dist/share-app/` is the folder to copy to Windows. Local builds create a folder; the tag release job creates the release ZIP. The resulting distribution requires the .NET 10 x64 runtime and FFmpeg, just like the Actions artifact.
+
+For individual local development steps on Windows, run the following commands from PowerShell in the repository root. The required build order is web UI → window capture → control server:
 
 ```powershell
 cd web-ui
@@ -94,6 +116,8 @@ The executable reads a literal `KEY=VALUE` `.env` file; it does not execute shel
 Environment variables override the file. Single or double quotes around a whole value are optional; inline shell expansions and inline comments are not interpreted. The web client is found automatically: `web/` beside the executable in a release, `web-ui/dist/` in a checkout. Only `.html`, `.css` and `.js` files within that directory are served; parent directories, directory listings, hidden files and escaping symlinks are rejected.
 
 The application has no login, shared secret, access tokens or authentication endpoint. The mobile UI loads immediately and uses the same APIs as any direct caller. Browser API and WebSocket requests must come from the same host as the page. One control connection is allowed at a time; target selection is shared across clients, including during an active connection.
+
+The application list includes the window's Windows icon as a 32px PNG in the optional `icon_png` base64 field. CaptureProbe reads the window or class icon using bounded Windows messages; missing icons use a generic SVG in the client. Icons are generated with each list request, without a separate endpoint, persistent cache, or additional dependency.
 
 For external access, run Cloudflare Tunnel on the Windows host and route the public hostname to `http://127.0.0.1:8443`. Protect the entire hostname with Cloudflare Access, including `/api/*` and `/ws`, and enable token validation in `cloudflared` using [Protect with Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/). Keep the origin reachable only through the trusted proxy for remote clients. Preserve the public HTTP `Host` header so the application's Origin checks continue to work. Local loopback access requires no authentication; Cloudflare-specific integration remains outside the application code.
 
