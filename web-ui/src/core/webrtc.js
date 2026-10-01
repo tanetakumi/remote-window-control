@@ -14,7 +14,6 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
     let ready = false;
     let hasTrack = false;
     let hasVideoFrame = false;
-    let useDataChannel = false;
     let statsTimer;
     let lastBytes;
     let lastTime;
@@ -74,12 +73,9 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
         if (closed || !ready) return false;
         const serialized = JSON.stringify(payload);
         try {
-          if (useDataChannel && inputChannel.readyState === "open" && inputChannel.bufferedAmount < 64 * 1024) {
+          // Input travels only on the control data channel; the WebSocket carries signaling.
+          if (inputChannel.readyState === "open" && inputChannel.bufferedAmount < 64 * 1024) {
             inputChannel.send(serialized);
-            return true;
-          }
-          if (!useDataChannel && signaling.readyState === WebSocket.OPEN && signaling.bufferedAmount < 64 * 1024) {
-            signaling.send(serialized);
             return true;
           }
           fail(new Error("Control connection is congested. Reconnect to continue."));
@@ -89,10 +85,9 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
     };
 
     function checkReady() {
-      if (closed || ready || !hasTrack || !hasVideoFrame || peer.connectionState !== "connected") return;
+      // Ready means input can be delivered: video is playing and the control channel is open.
+      if (closed || ready || !hasTrack || !hasVideoFrame || peer.connectionState !== "connected" || inputChannel.readyState !== "open") return;
       ready = true;
-      // Keep one ordered control transport for the lifetime of the connection.
-      useDataChannel = inputChannel.readyState === "open";
       window.clearTimeout(timeout);
       window.clearTimeout(waitingTimer);
       status("Control ready");
@@ -104,7 +99,8 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
     function onAbort() { fail(new Error("Connection cancelled.")); }
     videoElement.addEventListener("loadeddata", onVideoFrame);
     signal?.addEventListener("abort", onAbort, { once: true });
-    inputChannel.addEventListener("close", () => { if (ready && useDataChannel) fail(new Error("Control channel closed.")); });
+    inputChannel.addEventListener("open", checkReady);
+    inputChannel.addEventListener("close", () => fail(new Error("Control channel closed.")));
     peer.addTransceiver("video", { direction: "recvonly" });
     peer.ontrack = (event) => {
       if (closed) return;

@@ -90,9 +90,13 @@ test("large pasted text is sent in bounded Unicode-safe commands", () => {
 });
 
 class Channel extends EventTarget {
-  readyState = "open";
+  static current;
+  readyState = "connecting";
   bufferedAmount = 0;
-  send() {}
+  sent = [];
+  constructor() { super(); Channel.current = this; }
+  open() { this.readyState = "open"; emit(this, "open"); }
+  send(data) { this.sent.push(data); }
   close() { this.readyState = "closed"; }
 }
 class Peer {
@@ -141,6 +145,9 @@ test("connection waits for media and decoded video, queues early ICE, and closes
   await flush();
   assert.equal(resolved, false);
   emit(video, "loadeddata");
+  await flush();
+  assert.equal(resolved, false, "not ready until the control channel is open");
+  Channel.current.open();
   const remote = await pending;
   assert.equal(resolved, true);
   emit(Socket.current, "message", { data: JSON.stringify({ type: "error", message: "host failure" }) });
@@ -165,4 +172,42 @@ test("host error rejects readiness and abort cancels a pending connection", asyn
   const rejection = assert.rejects(cancelled, /cancelled/);
   abort.abort();
   await rejection;
+});
+
+test("input is sent only on the control data channel, never on the signaling socket", async () => {
+  const video = new Element();
+  const pending = createRemoteConnection({ videoElement: video });
+  const socketSent = [];
+  Socket.current.send = (data) => socketSent.push(data);
+  emit(Socket.current, "open");
+  emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.answer", sdp: "answer" }) });
+  await flush();
+  Peer.current.ontrack({ streams: [{ getTracks: () => [] }] });
+  Peer.current.connectionState = "connected";
+  Peer.current.onconnectionstatechange();
+  emit(video, "loadeddata");
+  Channel.current.open();
+  const remote = await pending;
+  const before = socketSent.length;
+
+  assert.equal(remote.sendControl({ type: "input.tap", x: 0.5 }), true);
+  assert.deepEqual(Channel.current.sent.map((s) => JSON.parse(s)), [{ type: "input.tap", x: 0.5 }]);
+  assert.equal(socketSent.length, before, "nothing is sent on the WebSocket");
+  remote.close();
+});
+
+test("a control channel that never opens fails the connection instead of falling back", async () => {
+  const video = new Element();
+  const pending = createRemoteConnection({ videoElement: video });
+  const rejected = assert.rejects(pending, /Control channel closed/);
+  emit(Socket.current, "open");
+  emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.answer", sdp: "answer" }) });
+  await flush();
+  Peer.current.ontrack({ streams: [{ getTracks: () => [] }] });
+  Peer.current.connectionState = "connected";
+  Peer.current.onconnectionstatechange();
+  emit(video, "loadeddata");
+  await flush();
+  emit(Channel.current, "close");
+  await rejected;
 });
