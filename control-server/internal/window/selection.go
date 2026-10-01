@@ -31,28 +31,44 @@ func (s *Selection) List(ctx context.Context) ([]Info, error) {
 	return s.lister.ListWindows(ctx)
 }
 
-// Select makes the listed window with the given handle the target. Watchers
-// are notified only when the handle differs from the previous selection.
-func (s *Selection) Select(ctx context.Context, handle uint64) (Info, error) {
+// Resolve finds the listed window with the given handle without selecting it.
+// It enumerates windows, which can take a while, so callers that need to do
+// other work around a selection resolve first and then Set.
+func (s *Selection) Resolve(ctx context.Context, handle uint64) (Info, error) {
 	windows, err := s.lister.ListWindows(ctx)
 	if err != nil {
 		return Info{}, err
 	}
 	for _, w := range windows {
-		if w.Handle != handle {
-			continue
+		if w.Handle == handle {
+			return w, nil
 		}
-		s.mu.Lock()
-		if !s.has || s.current.Handle != w.Handle {
-			close(s.changed)
-			s.changed = make(chan struct{})
-		}
-		s.current = w
-		s.has = true
-		s.mu.Unlock()
-		return w, nil
 	}
 	return Info{}, ErrNotFound
+}
+
+// Set makes w the target. Watchers are notified only when the handle differs
+// from the previous selection; selecting the same window again just refreshes
+// its details.
+func (s *Selection) Set(w Info) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.has || s.current.Handle != w.Handle {
+		close(s.changed)
+		s.changed = make(chan struct{})
+	}
+	s.current = w
+	s.has = true
+}
+
+// Select resolves the window with the given handle and makes it the target.
+func (s *Selection) Select(ctx context.Context, handle uint64) (Info, error) {
+	w, err := s.Resolve(ctx, handle)
+	if err != nil {
+		return Info{}, err
+	}
+	s.Set(w)
+	return w, nil
 }
 
 // Current returns the selected window, if any.

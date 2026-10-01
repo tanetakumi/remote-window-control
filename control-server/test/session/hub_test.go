@@ -1,0 +1,296 @@
+package session_test
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
+
+	"share-app-host/internal/input"
+	"share-app-host/internal/media"
+	"share-app-host/internal/session"
+	"share-app-host/test/testutil"
+)
+
+const wait = 3 * time.Second
+
+// noTarget never has a window selected, so no capture is ever started.
+type noTarget struct{}
+
+func (noTarget) State() (uint64, bool, <-chan struct{}) { return 0, false, make(chan struct{}) }
+
+type fixture struct {
+	hub      *session.Hub
+	injector *testutil.RecordingInjector
+	address  string
+	headers  http.Header
+}
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+	injector := &testutil.RecordingInjector{}
+	hub := session.NewHub(session.Options{
+		Dispatcher: input.NewDispatcher(injector),
+		Source: func(context.Context, uint64) (media.FrameStream, error) {
+			return nil, errors.New("no capture in tests")
+		},
+		Target:  noTarget{},
+		Encoder: media.DefaultEncoderConfig("ffmpeg"),
+	})
+	server := httptest.NewServer(hub)
+	t.Cleanup(server.Close) // runs after hub.Close
+	t.Cleanup(hub.Close)
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	return &fixture{
+		hub:      hub,
+		injector: injector,
+		address:  "ws://" + host + "/ws",
+		headers:  http.Header{"Origin": {"https://" + host}},
+	}
+}
+
+// dial opens a WebSocket and returns it with the HTTP response, which is the
+// rejection when the dial fails.
+func (f *fixture) dial(t *testing.T, headers http.Header) (*websocket.Conn, *http.Response, error) {
+	t.Helper()
+	conn, resp, err := websocket.DefaultDialer.Dial(f.address, headers)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	if conn != nil {
+		t.Cleanup(func() { _ = conn.Close() })
+	}
+	return conn, resp, err
+}
+
+func (f *fixture) connect(t *testing.T) *websocket.Conn {
+	t.Helper()
+	conn, _, err := f.dial(t, f.headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return conn
+}
+
+func send(t *testing.T, conn *websocket.Conn, v any) {
+	t.Helper()
+	if err := conn.WriteJSON(v); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type reply struct {
+	Type    string `json:"type"`
+	SDP     string `json:"sdp"`
+	Message string `json:"message"`
+}
+
+// readUntil reads replies until one has the wanted type, skipping ICE
+// candidates, which can arrive at any time.
+func readUntil(t *testing.T, conn *websocket.Conn, want string) reply {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(wait))
+	for {
+		var r reply
+		if err := conn.ReadJSON(&r); err != nil {
+			t.Fatalf("waiting for %q: %v", want, err)
+		}
+		if r.Type == want {
+			return r
+		}
+		if r.Type != "webrtc.ice" {
+			t.Fatalf("waiting for %q, got %+v", want, r)
+		}
+	}
+}
+
+// expectClosed fails unless the server closes the connection soon.
+func expectClosed(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(wait))
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			if ne, ok := err.(interface{ Timeout() bool }); ok && ne.Timeout() {
+				t.Fatal("connection was not closed")
+			}
+			return
+		}
+	}
+}
+
+func TestCrossOriginConnectionsAreRejected(t *testing.T) {
+	f := newFixture(t)
+	_, resp, err := f.dial(t, http.Header{"Origin": {"https://other-host"}})
+	if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-origin dial: err=%v response=%v", err, resp)
+	}
+	// The refusal must not have used up the connection slot.
+	f.connect(t)
+}
+
+func TestSecondConnectionIsRejectedUntilTheFirstEnds(t *testing.T) {
+	f := newFixture(t)
+	first := f.connect(t)
+
+	_, resp, err := f.dial(t, f.headers)
+	if err == nil || resp == nil || resp.StatusCode != http.StatusConflict {
+		t.Fatalf("second connection: err=%v response=%v", err, resp)
+	}
+
+	_ = first.Close()
+	deadline := time.Now().Add(wait)
+	for {
+		conn, _, err := f.dial(t, f.headers)
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("slot not released after the first connection closed: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestCloseDisconnectsTheActiveConnectionAndRefusesNewOnes(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	closed := make(chan struct{})
+	go func() {
+		f.hub.Close()
+		close(closed)
+	}()
+	expectClosed(t, conn)
+	select {
+	case <-closed:
+	case <-time.After(wait):
+		t.Fatal("Hub.Close did not return")
+	}
+
+	if _, _, err := f.dial(t, f.headers); err == nil {
+		t.Fatal("connection accepted after Close")
+	}
+}
+
+func TestOfferIsAnswered(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	send(t, conn, map[string]string{"type": "webrtc.offer", "sdp": testutil.BrowserOffer(t)})
+	answer := readUntil(t, conn, "webrtc.answer")
+	for _, want := range []string{"m=video", "VP8"} {
+		if !strings.Contains(answer.SDP, want) {
+			t.Errorf("answer lacks %q", want)
+		}
+	}
+}
+
+func TestInvalidOfferIsReportedAndEndsTheSession(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	send(t, conn, map[string]string{"type": "webrtc.offer", "sdp": "not an sdp"})
+	if r := readUntil(t, conn, "error"); r.Message == "" {
+		t.Fatal("error carried no message")
+	}
+	expectClosed(t, conn)
+}
+
+func TestMalformedSignalingEndsTheSession(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	if err := conn.WriteMessage(websocket.TextMessage, []byte("this is not json")); err != nil {
+		t.Fatal(err)
+	}
+	r := readUntil(t, conn, "error")
+	if r.Message != "invalid signaling message" {
+		t.Fatalf("message = %q", r.Message)
+	}
+	expectClosed(t, conn)
+}
+
+func TestOversizedMessageEndsTheSession(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	huge := `{"type":"input.text","text":"` + strings.Repeat("a", input.MaxMessageBytes) + `"}`
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(huge))
+	expectClosed(t, conn)
+}
+
+func TestInputCommandsReachTheInjector(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	send(t, conn, map[string]any{"type": "input.tap", "button": "left", "x": 0.25, "y": 0.75})
+	send(t, conn, map[string]any{"type": "input.text", "text": "hi"})
+	deadline := time.Now().Add(wait)
+	for len(f.injector.Events()) < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("events: %v", f.injector.Events())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := f.injector.Events(); got[0] != "tap:left:0.25,0.75" || got[1] != "text:hi" {
+		t.Fatalf("events: %v", got)
+	}
+}
+
+func TestRejectedInputIsReportedWithoutEndingTheSession(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	send(t, conn, map[string]any{"type": "input.explode"})
+	r := readUntil(t, conn, "input.error")
+	if !strings.Contains(r.Message, "unsupported input command") {
+		t.Fatalf("message = %q", r.Message)
+	}
+
+	// The connection is still usable.
+	send(t, conn, map[string]any{"type": "input.text", "text": "still here"})
+	deadline := time.Now().Add(wait)
+	for len(f.injector.Events()) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the session stopped accepting input after a rejected command")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestDisconnectReleasesHeldInput(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	send(t, conn, map[string]any{"type": "input.mouseDown", "button": "left", "x": 0.5, "y": 0.5})
+	send(t, conn, map[string]any{"type": "input.keyDown", "key": "Enter"})
+	deadline := time.Now().Add(wait)
+	for len(f.injector.Events()) < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("events before disconnect: %v", f.injector.Events())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	_ = conn.Close()
+	for {
+		events := f.injector.Events()
+		if len(events) >= 4 {
+			if events[2] != "up:Enter" || events[3] != "up:left:0.5,0.5" {
+				t.Fatalf("release order: %v", events)
+			}
+			return
+		}
+		if time.Now().After(deadline.Add(wait)) {
+			t.Fatalf("held input not released after disconnect: %v", events)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}

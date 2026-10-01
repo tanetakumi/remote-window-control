@@ -1,0 +1,142 @@
+// Package session runs the single remote-control connection: a WebSocket that
+// carries WebRTC signaling and input commands between the browser and the
+// host.
+package session
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/gorilla/websocket"
+	pion "github.com/pion/webrtc/v4"
+
+	"share-app-host/internal/input"
+	"share-app-host/internal/media"
+	"share-app-host/internal/origin"
+)
+
+const handshakeTimeout = 5 * time.Second
+
+// Options are the collaborators of a Hub.
+type Options struct {
+	// Dispatcher applies input commands; it is activated while a browser is
+	// connected and releases held input when the connection ends.
+	Dispatcher *input.Dispatcher
+	// Source, Target and Encoder configure the video each connection streams.
+	Source  media.Source
+	Target  media.Target
+	Encoder media.EncoderConfig
+}
+
+// Hub serves the control WebSocket. Only one connection is active at a time;
+// further attempts are refused with 409 Conflict until it ends.
+type Hub struct {
+	opts     Options
+	slot     Slot
+	upgrader websocket.Upgrader
+}
+
+// NewHub returns a Hub for the given collaborators.
+func NewHub(opts Options) *Hub {
+	return &Hub{
+		opts: opts,
+		upgrader: websocket.Upgrader{
+			CheckOrigin:      origin.Same,
+			HandshakeTimeout: handshakeTimeout,
+		},
+	}
+}
+
+// Close refuses new connections, closes the active one and waits until its
+// resources (media workers, held input) have been released.
+func (h *Hub) Close() {
+	h.slot.Close()
+}
+
+// ServeHTTP upgrades the request to a WebSocket and serves the session.
+func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !origin.Same(r) {
+		http.Error(w, "origin forbidden", http.StatusForbidden)
+		return
+	}
+	if !h.slot.TryAcquire() {
+		http.Error(w, "a control connection is already active", http.StatusConflict)
+		return
+	}
+	// Registered first, so it runs last: release only after every worker and
+	// held input has been cleaned up.
+	defer h.slot.Release()
+
+	ws, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	c := newConn(ws)
+	defer c.Close()
+	h.slot.OnClose(c.abort)
+
+	h.serve(c)
+}
+
+// serve handles one connection until it ends.
+func (h *Hub) serve(c *conn) {
+	h.opts.Dispatcher.Activate()
+	defer h.opts.Dispatcher.ReleaseAll()
+
+	control := func(payload []byte) {
+		if err := h.opts.Dispatcher.Dispatch(payload); err != nil {
+			c.send(message{Type: typeInputError, Message: err.Error()})
+		}
+	}
+	peer, err := media.NewPeer(media.PeerOptions{
+		Source:  h.opts.Source,
+		Target:  h.opts.Target,
+		Encoder: h.opts.Encoder,
+		OnICE: func(candidate pion.ICECandidateInit) {
+			c.send(message{Type: typeICE, Candidate: &candidate})
+		},
+		OnControl: control,
+		OnFailure: func(err error) {
+			c.send(errorMessage(err.Error()))
+			c.abort()
+		},
+	})
+	if err != nil {
+		c.send(errorMessage(err.Error()))
+		return
+	}
+	defer peer.Close() // runs before ReleaseAll: stop the workers, then release input
+
+	for {
+		data, err := c.read()
+		if err != nil {
+			return
+		}
+		var msg message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			c.send(errorMessage("invalid signaling message"))
+			return
+		}
+		switch msg.Type {
+		case typeOffer:
+			answer, err := peer.AcceptOffer(msg.SDP)
+			if err != nil {
+				c.send(errorMessage(err.Error()))
+				return
+			}
+			c.send(message{Type: typeAnswer, SDP: answer})
+		case typeICE:
+			if msg.Candidate == nil {
+				continue
+			}
+			if err := peer.AddICECandidate(*msg.Candidate); err != nil {
+				log.Printf("ICE error: %v", err)
+				return
+			}
+		default:
+			control(data)
+		}
+	}
+}

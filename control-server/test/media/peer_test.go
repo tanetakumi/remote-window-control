@@ -8,6 +8,7 @@ import (
 	pion "github.com/pion/webrtc/v4"
 
 	"share-app-host/internal/media"
+	"share-app-host/test/testutil"
 )
 
 func newPeer(t *testing.T, opts media.PeerOptions) *media.Peer {
@@ -27,36 +28,10 @@ func newPeer(t *testing.T, opts media.PeerOptions) *media.Peer {
 	return peer
 }
 
-// browserOffer builds the SDP offer a browser would send: a receive-only video
-// section and the control data channel.
-func browserOffer(t *testing.T) string {
-	t.Helper()
-	browser, err := pion.NewPeerConnection(pion.Configuration{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = browser.Close() })
-	if _, err = browser.AddTransceiverFromKind(pion.RTPCodecTypeVideo,
-		pion.RTPTransceiverInit{Direction: pion.RTPTransceiverDirectionRecvonly}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = browser.CreateDataChannel("control", nil); err != nil {
-		t.Fatal(err)
-	}
-	offer, err := browser.CreateOffer(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = browser.SetLocalDescription(offer); err != nil {
-		t.Fatal(err)
-	}
-	return offer.SDP
-}
-
 func TestPeerAnswersABrowserOfferWithAVP8VideoTrack(t *testing.T) {
 	peer := newPeer(t, media.PeerOptions{})
 
-	answer, err := peer.AcceptOffer(browserOffer(t))
+	answer, err := peer.AcceptOffer(testutil.BrowserOffer(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +44,7 @@ func TestPeerAnswersABrowserOfferWithAVP8VideoTrack(t *testing.T) {
 
 func TestPeerAcceptsOnlyOneOffer(t *testing.T) {
 	peer := newPeer(t, media.PeerOptions{})
-	offer := browserOffer(t)
+	offer := testutil.BrowserOffer(t)
 	if _, err := peer.AcceptOffer(offer); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +60,7 @@ func TestPeerRejectsAnInvalidOffer(t *testing.T) {
 		t.Fatal("garbage offer accepted")
 	}
 	// A rejected offer does not use up the one allowed offer.
-	if _, err := peer.AcceptOffer(browserOffer(t)); err != nil {
+	if _, err := peer.AcceptOffer(testutil.BrowserOffer(t)); err != nil {
 		t.Fatalf("valid offer after a rejected one: %v", err)
 	}
 }

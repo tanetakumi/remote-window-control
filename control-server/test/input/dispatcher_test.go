@@ -8,41 +8,11 @@ import (
 	"testing"
 
 	"share-app-host/internal/input"
+	"share-app-host/test/testutil"
 )
 
-// recordingInjector records the calls that reach the injector.
-type recordingInjector struct {
-	events []string
-	fail   error
-}
-
-func (i *recordingInjector) record(format string, args ...any) error {
-	i.events = append(i.events, fmt.Sprintf(format, args...))
-	return i.fail
-}
-
-func (i *recordingInjector) Move(x, y float64) error { return i.record("move:%v,%v", x, y) }
-func (i *recordingInjector) Tap(b string, x, y float64) error {
-	return i.record("tap:%s:%v,%v", b, x, y)
-}
-func (i *recordingInjector) MouseDown(b string, x, y float64) error {
-	return i.record("down:%s:%v,%v", b, x, y)
-}
-func (i *recordingInjector) MouseUp(b string, x, y float64) error {
-	return i.record("up:%s:%v,%v", b, x, y)
-}
-func (i *recordingInjector) Scroll(dx, dy, x, y float64) error {
-	return i.record("scroll:%v,%v@%v,%v", dx, dy, x, y)
-}
-func (i *recordingInjector) ResizeViewport(c input.Command) error {
-	return i.record("resize:%dx%d", c.Width, c.Height)
-}
-func (i *recordingInjector) KeyDown(c input.Command) error { return i.record("down:%s", c.Key) }
-func (i *recordingInjector) KeyUp(c input.Command) error   { return i.record("up:%s", c.Key) }
-func (i *recordingInjector) Text(s string) error           { return i.record("text:%s", s) }
-
-func activeDispatcher() (*input.Dispatcher, *recordingInjector) {
-	injector := &recordingInjector{}
+func activeDispatcher() (*input.Dispatcher, *testutil.RecordingInjector) {
+	injector := &testutil.RecordingInjector{}
 	d := input.NewDispatcher(injector)
 	d.Activate()
 	return d, injector
@@ -60,12 +30,12 @@ func TestTargetChangeReleasesOldInputAndDisconnectRejectsLateCommands(t *testing
 	for _, command := range []string{`{"type":"input.mouseDown","button":"right","x":0.5}`, `{"type":"input.keyDown","key":"Enter"}`} {
 		mustDispatch(t, d, command)
 	}
-	if err := d.ChangeTarget(func() error { i.events = append(i.events, "target changed"); return nil }); err != nil {
+	if err := d.ChangeTarget(func() error { i.Record("target changed"); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"down:right:0.5,0", "down:Enter", "up:Enter", "up:right:0.5,0", "target changed"}
-	if !reflect.DeepEqual(i.events, want) {
-		t.Fatalf("events = %v, want %v", i.events, want)
+	if !reflect.DeepEqual(i.Events(), want) {
+		t.Fatalf("events = %v, want %v", i.Events(), want)
 	}
 	d.ReleaseAll()
 	if err := d.Dispatch([]byte(`{"type":"input.mouseDown","button":"right"}`)); err == nil {
@@ -75,19 +45,19 @@ func TestTargetChangeReleasesOldInputAndDisconnectRejectsLateCommands(t *testing
 	mustDispatch(t, d, `{"type":"input.keyDown","key":"Enter"}`)
 	d.ReleaseAll()
 	d.ReleaseAll()
-	if got := i.events[len(i.events)-1]; got != "up:Enter" {
-		t.Fatal(i.events)
+	if got := i.Events()[len(i.Events())-1]; got != "up:Enter" {
+		t.Fatal(i.Events())
 	}
 }
 
 func TestDispatchRejectsInputUntilActivated(t *testing.T) {
-	i := &recordingInjector{}
+	i := &testutil.RecordingInjector{}
 	d := input.NewDispatcher(i)
 	if err := d.Dispatch([]byte(`{"type":"input.tap"}`)); err == nil {
 		t.Fatal("command accepted before Activate")
 	}
-	if len(i.events) != 0 {
-		t.Fatalf("injector reached: %v", i.events)
+	if len(i.Events()) != 0 {
+		t.Fatalf("injector reached: %v", i.Events())
 	}
 }
 
@@ -109,8 +79,8 @@ func TestDispatchRoutesCommandsToTheInjector(t *testing.T) {
 		"resize:390x844",
 		"text:hello",
 	}
-	if !reflect.DeepEqual(i.events, want) {
-		t.Fatalf("events = %v, want %v", i.events, want)
+	if !reflect.DeepEqual(i.Events(), want) {
+		t.Fatalf("events = %v, want %v", i.Events(), want)
 	}
 }
 
@@ -119,7 +89,7 @@ func TestHeldButtonsAreReleasedWhereThePointerLastMoved(t *testing.T) {
 	mustDispatch(t, d, `{"type":"input.mouseDown","button":"left","x":0.1,"y":0.1}`)
 	mustDispatch(t, d, `{"type":"input.mouseMove","x":0.8,"y":0.9}`)
 	d.ReleaseAll()
-	if got := i.events[len(i.events)-1]; got != "up:left:0.8,0.9" {
+	if got := i.Events()[len(i.Events())-1]; got != "up:left:0.8,0.9" {
 		t.Fatalf("release = %q", got)
 	}
 }
@@ -143,8 +113,8 @@ func TestDispatchValidation(t *testing.T) {
 			if err := d.Dispatch([]byte(tt.command)); err == nil {
 				t.Fatal("command accepted")
 			}
-			if len(i.events) != 0 {
-				t.Fatalf("injector reached: %v", i.events)
+			if len(i.Events()) != 0 {
+				t.Fatalf("injector reached: %v", i.Events())
 			}
 		})
 	}
@@ -178,17 +148,17 @@ func TestHeldInputIsBounded(t *testing.T) {
 
 func TestFailedInjectionIsNotRecordedAsHeld(t *testing.T) {
 	d, i := activeDispatcher()
-	i.fail = errors.New("target gone")
+	i.Fail = errors.New("target gone")
 	if err := d.Dispatch([]byte(`{"type":"input.keyDown","key":"Enter"}`)); err == nil {
 		t.Fatal("injector failure was swallowed")
 	}
 	if err := d.Dispatch([]byte(`{"type":"input.mouseDown","button":"left"}`)); err == nil {
 		t.Fatal("injector failure was swallowed")
 	}
-	i.events = nil
-	i.fail = nil
+	i.Reset()
+	i.Fail = nil
 	d.ReleaseAll()
-	if len(i.events) != 0 {
-		t.Fatalf("released input that was never pressed: %v", i.events)
+	if len(i.Events()) != 0 {
+		t.Fatalf("released input that was never pressed: %v", i.Events())
 	}
 }

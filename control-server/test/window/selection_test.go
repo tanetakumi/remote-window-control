@@ -112,3 +112,45 @@ func TestChangeNotificationFiresOnlyWhenHandleChanges(t *testing.T) {
 		t.Fatal("new notification channel must start open")
 	}
 }
+
+func TestResolveFindsAWindowWithoutSelectingIt(t *testing.T) {
+	s, _ := newSelection(window.Info{Handle: 1}, window.Info{Handle: 2, Title: "two"})
+	_, _, changed := s.State()
+
+	got, err := s.Resolve(context.Background(), 2)
+	if err != nil || got.Title != "two" {
+		t.Fatalf("Resolve(2) = %+v, %v", got, err)
+	}
+	if _, ok := s.Current(); ok || isClosed(changed) {
+		t.Fatal("Resolve changed the selection")
+	}
+	if _, err := s.Resolve(context.Background(), 9); !errors.Is(err, window.ErrNotFound) {
+		t.Fatalf("Resolve(unlisted) error = %v", err)
+	}
+}
+
+func TestSetSelectsAWindowAndNotifiesOnlyOnAChange(t *testing.T) {
+	s, _ := newSelection()
+	_, _, first := s.State()
+
+	s.Set(window.Info{Handle: 5, Title: "a"})
+	if !isClosed(first) {
+		t.Fatal("selecting the first window did not notify")
+	}
+	if h, ok := s.CurrentHandle(); !ok || h != 5 {
+		t.Fatalf("CurrentHandle() = %d, %v", h, ok)
+	}
+
+	_, _, second := s.State()
+	s.Set(window.Info{Handle: 5, Title: "renamed"})
+	if isClosed(second) {
+		t.Fatal("setting the same handle notified")
+	}
+	if cur, _ := s.Current(); cur.Title != "renamed" {
+		t.Fatalf("details not refreshed: %+v", cur)
+	}
+	s.Set(window.Info{Handle: 6})
+	if !isClosed(second) {
+		t.Fatal("switching windows did not notify")
+	}
+}
