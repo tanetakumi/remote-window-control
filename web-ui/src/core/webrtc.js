@@ -1,13 +1,13 @@
-function makeSignalingUrl(token) {
+function makeSignalingUrl() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+  return `${protocol}//${window.location.host}/ws`;
 }
 
-export function createRemoteConnection({ token, videoElement, onStatus, onInputMessage, onBitrate, onDisconnect, signal }) {
+export function createRemoteConnection({ videoElement, onStatus, onInputMessage, onBitrate, onDisconnect, signal }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error("Connection cancelled.")); return; }
     const peer = new RTCPeerConnection();
-    const signaling = new WebSocket(makeSignalingUrl(token));
+    const signaling = new WebSocket(makeSignalingUrl());
     const inputChannel = peer.createDataChannel("control");
     const pendingICE = [];
     let closed = false;

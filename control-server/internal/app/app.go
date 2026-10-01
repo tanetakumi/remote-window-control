@@ -4,15 +4,12 @@ import (
 	"context"
 	"errors"
 	"log"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"share-app-host/internal/auth"
 	"share-app-host/internal/config"
 	"share-app-host/internal/httpserver"
 	"share-app-host/internal/input"
@@ -33,15 +30,12 @@ func (a *App) Run() error {
 	if err := input.EnableDPIAwareness(); err != nil {
 		log.Printf("DPI awareness: %v", err)
 	}
-	sessions := auth.NewStore(a.cfg.Secret)
 	captureBridge := nativecapture.NewBridge(a.cfg.BaseDir)
 	targets := targetwindow.NewManager(captureBridge)
 	dispatcher := input.NewDispatcher(input.NewSendInputInjector(targets))
-	signalingHub := signaling.NewHub(sessions, dispatcher, captureBridge, targets)
-	server := httpserver.New(a.cfg.ListenAddr, a.cfg.ClientDir, sessions, signalingHub, captureBridge, targets, a.cfg.BaseDir)
+	signalingHub := signaling.NewHub(dispatcher, captureBridge, targets)
+	server := httpserver.New(a.cfg.ListenAddr, a.cfg.ClientDir, signalingHub, captureBridge, targets, a.cfg.BaseDir)
 	defer signalingHub.Close()
-
-	printSecretLink(a.cfg.ListenAddr, a.cfg.Secret)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -59,23 +53,4 @@ func (a *App) Run() error {
 		return nil
 	}
 	return err
-}
-
-func printSecretLink(listenAddr, secret string) {
-	scheme := "http"
-	host := listenAddr
-	if address, port, err := net.SplitHostPort(listenAddr); err == nil && (address == "" || address == "0.0.0.0" || address == "::") {
-		host = net.JoinHostPort("127.0.0.1", port)
-	}
-
-	link := url.URL{
-		Scheme: scheme,
-		Host:   host,
-		Path:   "/",
-	}
-	query := link.Query()
-	query.Set("secret", secret)
-	link.RawQuery = query.Encode()
-
-	log.Printf("Local access: %s (use the Windows IP for remote access)", link.String())
 }

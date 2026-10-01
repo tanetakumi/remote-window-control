@@ -11,7 +11,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	pion "github.com/pion/webrtc/v4"
-	"share-app-host/internal/auth"
 	"share-app-host/internal/input"
 	"share-app-host/internal/nativecapture"
 	"share-app-host/internal/targetwindow"
@@ -20,17 +19,15 @@ import (
 )
 
 type Hub struct {
-	auth        *auth.Store
-	dispatcher  *input.Dispatcher
-	bridge      *nativecapture.Bridge
-	targets     *targetwindow.Manager
-	mu          sync.Mutex
-	active      bool
-	activeToken string
-	activeConn  *websocket.Conn
-	closed      bool
-	workers     sync.WaitGroup
-	upgrader    websocket.Upgrader
+	dispatcher *input.Dispatcher
+	bridge     *nativecapture.Bridge
+	targets    *targetwindow.Manager
+	mu         sync.Mutex
+	active     bool
+	activeConn *websocket.Conn
+	closed     bool
+	workers    sync.WaitGroup
+	upgrader   websocket.Upgrader
 }
 type message struct {
 	Type      string                 `json:"type"`
@@ -38,17 +35,16 @@ type message struct {
 	Candidate *pion.ICECandidateInit `json:"candidate,omitempty"`
 }
 
-func NewHub(store *auth.Store, dispatcher *input.Dispatcher, bridge *nativecapture.Bridge, targets *targetwindow.Manager) *Hub {
-	return &Hub{auth: store, dispatcher: dispatcher, bridge: bridge, targets: targets, upgrader: websocket.Upgrader{CheckOrigin: websecurity.SameOrigin, HandshakeTimeout: 5 * time.Second}}
+func NewHub(dispatcher *input.Dispatcher, bridge *nativecapture.Bridge, targets *targetwindow.Manager) *Hub {
+	return &Hub{dispatcher: dispatcher, bridge: bridge, targets: targets, upgrader: websocket.Upgrader{CheckOrigin: websecurity.SameOrigin, HandshakeTimeout: 5 * time.Second}}
 }
-func (h *Hub) acquire(token string) bool {
+func (h *Hub) acquire() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed || h.active {
 		return false
 	}
 	h.active = true
-	h.activeToken = token
 	h.workers.Add(1)
 	return true
 }
@@ -56,7 +52,6 @@ func (h *Hub) release() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.active = false
-	h.activeToken = ""
 	h.activeConn = nil
 	h.workers.Done()
 }
@@ -69,27 +64,22 @@ func (h *Hub) Close() {
 	h.mu.Unlock()
 	h.workers.Wait()
 }
-func (h *Hub) SelectTarget(ctx context.Context, token string, handle uint64) (nativecapture.WindowInfo, error) {
+func (h *Hub) SelectTarget(ctx context.Context, handle uint64) (nativecapture.WindowInfo, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed || h.active && h.activeToken != token {
-		return nativecapture.WindowInfo{}, fmt.Errorf("another connection controls the target")
+	if h.closed {
+		return nativecapture.WindowInfo{}, fmt.Errorf("control server is shutting down")
 	}
 	var selected nativecapture.WindowInfo
 	err := h.dispatcher.ChangeTarget(func() error { var err error; selected, err = h.targets.Select(ctx, handle); return err })
 	return selected, err
 }
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if _, err := h.auth.Validate(token); err != nil {
-		http.Error(w, "unauthorized", 401)
-		return
-	}
 	if !websecurity.SameOrigin(r) {
 		http.Error(w, "origin forbidden", 403)
 		return
 	}
-	if !h.acquire(token) {
+	if !h.acquire() {
 		http.Error(w, "a control connection is already active", 409)
 		return
 	}

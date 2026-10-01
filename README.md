@@ -1,11 +1,11 @@
 # Share App
 
-Control a selected Windows 11 application window from a mobile browser. The Windows host serves a vanilla JavaScript PWA, streams WGC video through ffmpeg and Pion WebRTC, and receives touch and keyboard input through a DataChannel or WebSocket. One control connection is allowed at a time.
+Control a selected Windows 11 application window from a mobile browser. The Windows host serves a vanilla JavaScript web client, streams WGC video through ffmpeg and Pion WebRTC, and receives touch and keyboard input through a DataChannel or WebSocket. One control connection is allowed at a time.
 
 ## Source layout
 
 ```text
-web-ui/                                Vite mobile PWA; regression tests in test/
+web-ui/                                Vite mobile web client; regression tests in test/
 control-server/                        Go server and package tests
 window-capture/
   apps/CaptureProbe/                    window list, stream and snapshot CLI
@@ -14,9 +14,9 @@ scripts/                               build, run and runner setup tools
 docs/validation.md                     verification results and Windows/device checks
 ```
 
-`CaptureProbe` is a runtime application, so it now lives under `apps/`. `Models.cs` contains the capture models. Windows input implementations use `_windows.go` filenames; the dispatcher, HTTP handlers and media process supervision can be tested on Linux. Executable names, API names and existing environment variable names are retained except for the removed network-vendor settings.
+`CaptureProbe` is a runtime application, so it now lives under `apps/`. `Models.cs` contains the capture models. Windows input implementations use `_windows.go` filenames; the dispatcher, HTTP handlers and media process supervision can be tested on Linux. Executable names remain stable; obsolete authentication APIs/settings and network-vendor settings have been removed.
 
-The web UI is served by the Windows machine but executes in the phone browser. The control server handles authentication, signaling and input, while window capture provides Windows-specific frame capture. The directories are named for these functions. The native library and executable names remain stable.
+The web UI is served by the Windows machine but executes in the phone browser. The control server handles signaling and input, while window capture provides Windows-specific frame capture. Authentication is managed externally by Cloudflare Access. The directories are named for these functions. The native library and executable names remain stable.
 
 ## Repository files
 
@@ -61,52 +61,53 @@ Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTarge
 
 ## Run and configuration
 
-When running from source, copy `.env.example` to `.env` in the repository root and set a long random `SHARE_APP_SECRET`. Run:
+When running from source, optionally copy `.env.example` to `.env` in the repository root to override configuration. Run:
 
 ```powershell
 ./scripts/run.ps1
 ```
 
-When using an extracted distribution ZIP, install the .NET 10 x64 runtime and provide ffmpeg with `libvpx` on PATH (or put `ffmpeg.exe` beside `share-host.exe`). Copy `.env.example` to `.env` beside `share-host.exe`, set `SHARE_APP_SECRET`, then run from the extracted folder:
+When using an extracted distribution ZIP, install the .NET 10 x64 runtime and provide ffmpeg with `libvpx` on PATH (or put `ffmpeg.exe` beside `share-host.exe`). Optionally copy `.env.example` to `.env` beside `share-host.exe`, then run from the extracted folder:
 
 ```powershell
 .\share-host.exe
 ```
 
-The default is HTTP on `:8443`, listening on all interfaces. Open `http://<Windows-IP>:8443/?secret=<your-secret>` on the phone, or the logged local link on Windows. Select a window to start control. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
+The default is HTTP on `127.0.0.1:8443`, listening on loopback only. Open `http://127.0.0.1:8443/` on Windows, or the externally configured HTTPS URL on the phone. Select a window to start control. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
 
 The executable reads a literal `KEY=VALUE` `.env` file; it does not execute shell commands. Supported keys are:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `SHARE_APP_ADDR` | `:8443` | HTTP listen address; the port does not imply TLS |
-| `SHARE_APP_SECRET` | random at startup | Shared secret used to obtain access tokens |
+| `SHARE_APP_ADDR` | `127.0.0.1:8443` | HTTP listen address; the port does not imply TLS |
 | `SHARE_APP_CLIENT_DIR` | release `web/`, development `web-ui/dist/` | Explicit client asset directory |
 
 Environment variables override the file. Single or double quotes around a whole value are optional; inline shell expansions and inline comments are not interpreted. Relative client paths resolve from the release/repository root. Only recognized client asset types within that directory are served; parent directories, directory listings, hidden files and escaping symlinks are rejected.
 
-HTTP APIs require a Bearer token even on loopback. Tokens expire after 12 hours; the client retries authentication using its saved secret. `/host-ui` serves a sign-in shell and uses the same authenticated APIs. Browser API and WebSocket requests must come from the same host as the page. The secret is removed from the client URL after authentication.
+The application has no login, shared secret, access tokens or authentication endpoint. `/host-ui` and the mobile UI load immediately and use the same APIs. Browser API and WebSocket requests must come from the same host as the page. One control connection is allowed at a time; target selection is shared across clients, including during an active connection.
 
-Client URLs follow the page origin, including HTTPS/WSS when HTTPS is supplied externally. HTTPS termination, domains, tunnels, NAT traversal and relay provisioning are managed separately. HTTP reachability does not establish WebRTC media reachability. Safari/PWA features requiring a secure origin should be tested through a separately supplied HTTPS URL.
+For external access, run Cloudflare Tunnel on the Windows host and route the public hostname to `http://127.0.0.1:8443`. Protect the entire hostname with Cloudflare Access, including `/api/*`, `/ws` and `/host-ui`, and enable token validation in `cloudflared` using [Protect with Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/). Keep the origin reachable only through the trusted proxy for remote clients. Preserve the public HTTP `Host` header so the application's Origin checks continue to work. Local loopback access requires no authentication; Cloudflare-specific integration remains outside the application code.
+
+When upgrading, remove `SHARE_APP_SECRET` from existing `.env` files; it is no longer a supported configuration key. Client-side credential storage and secret-bearing URLs are no longer used.
+
+Client URLs follow the page origin, including HTTPS/WSS when HTTPS is supplied externally. HTTPS termination, domains, tunnels, NAT traversal and relay provisioning are managed separately. HTTP reachability does not establish WebRTC media reachability. Safari features requiring a secure origin should be tested through a separately supplied HTTPS URL.
 
 ## Input and snapshots
 
-Retained controls include tap, long press/right-button drag, one- and two-finger scrolling, text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where the browser supports it, bitrate display and PWA installation guidance. Scroll targets the last tap. Composing text stays local until committed. Held input is released on cancellation, disconnect and target changes. Win32 text and scroll calls have bounded waits.
+Retained controls include tap, long press/right-button drag, one- and two-finger scrolling, text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where the browser supports it and bitrate display. Scroll targets the last tap. Composing text stays local until committed. Held input is released on cancellation, disconnect and target changes. Win32 text and scroll calls have bounded waits.
 
-Obtain a token for debugging:
+Call the local APIs directly for debugging:
 
 ```powershell
-$session = Invoke-RestMethod 'http://127.0.0.1:8443/api/session' -Method Post -ContentType 'application/json' -Body '{"secret":"your-secret"}'
-$headers = @{ Authorization = "Bearer $($session.access_token)" }
-Invoke-RestMethod 'http://127.0.0.1:8443/api/windows' -Headers $headers
-Invoke-RestMethod 'http://127.0.0.1:8443/api/target-window' -Method Post -Headers $headers -ContentType 'application/json' -Body '{"handle":657830}'
+Invoke-RestMethod 'http://127.0.0.1:8443/api/windows'
+Invoke-RestMethod 'http://127.0.0.1:8443/api/target-window' -Method Post -ContentType 'application/json' -Body '{"handle":657830}'
 ```
 
 `GET /api/snapshot` returns PNG bytes for the selected target; optional `hwnd` selects a handle for that request. Optional `out=window.png` saves a **new simple PNG filename** within `snapshots/` beside the release/repository root and returns its relative path and dimensions. Existing files are not overwritten. Absolute paths, directories, traversal and Windows device names are rejected. One snapshot helper runs at a time, with a 10-second execution timeout.
 
 ```powershell
-Invoke-WebRequest 'http://127.0.0.1:8443/api/snapshot' -Headers $headers -OutFile local-copy.png
-Invoke-RestMethod 'http://127.0.0.1:8443/api/snapshot?out=window.png' -Headers $headers
+Invoke-WebRequest 'http://127.0.0.1:8443/api/snapshot' -OutFile local-copy.png
+Invoke-RestMethod 'http://127.0.0.1:8443/api/snapshot?out=window.png'
 dotnet run --project window-capture/apps/CaptureProbe/CaptureProbe.csproj -- --hwnd 657830 --out 'D:\captures\probe.png'
 ```
 
@@ -132,16 +133,16 @@ Streaming ownership rules:
 - Keep one long-lived CaptureProbe per target and one long-lived ffmpeg encoder. Snapshot helpers are separate bounded operations. Never start streaming processes per frame.
 - Validate the 24-byte BGRA header, bound the latest-frame handoff, and keep reusable-buffer ownership explicit.
 - Target switching must cancel capture without waiting for another frame. Consume RTCP, bound and synchronize diagnostics, and keep shutdown idempotent.
-- Preserve the 10fps/quality baseline until interactive Windows measurements justify tuning. Serve only explicit client asset roots; never restore parent-directory fallback or loopback authorization bypasses.
+- Preserve the 10fps/quality baseline until interactive Windows measurements justify tuning. Serve only explicit client asset roots; never restore parent-directory fallback. Keep authentication in the external access layer and bind HTTP to loopback by default.
 
 Key implementation locations:
 
 | Function | Source |
 | --- | --- |
-| Touch gestures and release | `web-ui/src/gestures.js` |
-| Committed text, IME and special keys | `web-ui/src/keyboard.js` |
-| Connection readiness, ICE and cleanup | `web-ui/src/webrtc.js` |
-| Authentication refresh and retry | `web-ui/src/auth.js`, `web-ui/src/api.js` |
+| Touch gestures and release | `web-ui/src/input/gestures.js` |
+| Committed text, IME and special keys | `web-ui/src/input/keyboard.js` |
+| Connection readiness, ICE and cleanup | `web-ui/src/core/webrtc.js` |
+| Window list and target selection APIs | `web-ui/src/core/api.js` |
 | Win32 coordinates, DPI, buttons and bounded calls | `control-server/internal/input/sendinput_windows.go`, `control-server/internal/input/target_windows.go` |
 | Capture helper resolution and validated frame reads | `control-server/internal/nativecapture/bridge.go` |
 | Capture/encoder ownership and pacing | `control-server/internal/webrtc/windowstream.go` |

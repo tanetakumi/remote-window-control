@@ -20,7 +20,6 @@ const hostUIHTML = `<!doctype html>
   </head>
   <body>
     <h1>Select a target window</h1>
-    <form id="login"><input id="secret" type="password" autocomplete="current-password" placeholder="Host secret" required /><button type="submit">Sign in</button></form>
     <div id="status">Loading…</div>
     <div class="row">
       <button id="refresh">Refresh windows</button>
@@ -28,22 +27,9 @@ const hostUIHTML = `<!doctype html>
     <div id="current" class="card"></div>
     <div id="windows"></div>
     <script>
-      const login = document.getElementById("login");
-      let token = localStorage.getItem("share-app-access-token");
-      let secret = localStorage.getItem("share-app-secret");
-      async function authenticate() {
-        const res = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret }) });
-        if (!res.ok) throw new Error("Sign in with the host secret.");
-        token = (await res.json()).access_token;
-        localStorage.setItem("share-app-access-token", token);
-        localStorage.setItem("share-app-secret", secret);
-      }
       async function api(path, options = {}) {
-        const request = () => fetch(path, { ...options, headers: { ...options.headers, Authorization: "Bearer " + token } });
-        let res = await request();
-        if (res.status === 401 && secret) { await authenticate(); res = await request(); }
+        const res = await fetch(path, options);
         if (!res.ok) throw new Error(await res.text());
-        login.hidden = true;
         return res;
       }
       const status = document.getElementById("status");
@@ -77,18 +63,14 @@ const hostUIHTML = `<!doctype html>
           button.textContent = "Select window";
           button.addEventListener("click", async () => {
             try {
-            status.textContent = "Selecting window…";
-            const selection = await api("/api/target-window", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ handle: windowItem.handle })
-            });
-            if (!selection.ok) {
-              status.textContent = "Could not select the window";
-              return;
-            }
-            await loadCurrent();
-            status.textContent = "Window selected";
+              status.textContent = "Selecting window…";
+              await api("/api/target-window", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ handle: windowItem.handle })
+              });
+              await loadCurrent();
+              status.textContent = "Window selected";
             } catch (error) { status.textContent = error.message; }
           });
           card.appendChild(document.createElement("div")).appendChild(button);
@@ -107,17 +89,10 @@ const hostUIHTML = `<!doctype html>
 
       async function reload() {
         try { await Promise.all([loadCurrent(), loadWindows()]); }
-        catch (error) { status.textContent = error.message; login.hidden = false; }
+        catch (error) { status.textContent = error.message; }
       }
       document.getElementById("refresh").addEventListener("click", reload);
-      login.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        secret = document.getElementById("secret").value;
-        try { await authenticate(); document.getElementById("secret").value = ""; await reload(); }
-        catch (error) { status.textContent = error.message; }
-      });
-      if (token || secret) reload();
-      else status.textContent = "Sign in with the host secret.";
+      reload();
     </script>
   </body>
 </html>

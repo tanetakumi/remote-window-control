@@ -1,3 +1,5 @@
+import { createListenerTracker } from "../lib/events.js";
+
 function getViewportPayload(targetElement) {
   const stageRect = targetElement?.getBoundingClientRect();
   const viewport = window.visualViewport;
@@ -21,6 +23,7 @@ export function attachViewportSync(sendControl, options = {}) {
   const isSuspended = options.isSuspended ?? (() => false);
   const targetElement = options.targetElement ?? null;
   let lastPayload = null;
+  const { listen, cleanup: removeListeners } = createListenerTracker();
 
   const sendViewport = () => {
     if (disposed) return;
@@ -68,7 +71,7 @@ export function attachViewportSync(sendControl, options = {}) {
     );
   };
 
-  const onFullscreenChange = () => {
+  const triggerFullscreenSync = () => {
     lastPayload = null;
     animationId = requestAnimationFrame(() => {
       if (disposed) return;
@@ -77,36 +80,24 @@ export function attachViewportSync(sendControl, options = {}) {
     });
   };
 
-  const triggerFullscreenSync = () => {
-    onFullscreenChange();
-  };
-
   const orientationMedia = window.matchMedia?.("(orientation: portrait)");
   const onOrientationChange = () => scheduleOrientationSync();
 
   sendViewport();
-  window.addEventListener("resize", scheduleViewportSync);
-  window.addEventListener("orientationchange", onOrientationChange);
-  orientationMedia?.addEventListener?.("change", onOrientationChange);
-  window.visualViewport?.addEventListener("resize", scheduleViewportSync);
-  document.addEventListener("fullscreenchange", onFullscreenChange);
-  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
-  if (screen.orientation?.addEventListener) {
-    screen.orientation.addEventListener("change", onOrientationChange);
-  }
+  listen(window, "resize", scheduleViewportSync);
+  listen(window, "orientationchange", onOrientationChange);
+  if (orientationMedia?.addEventListener) listen(orientationMedia, "change", onOrientationChange);
+  if (window.visualViewport) listen(window.visualViewport, "resize", scheduleViewportSync);
+  listen(document, "fullscreenchange", triggerFullscreenSync);
+  listen(document, "webkitfullscreenchange", triggerFullscreenSync);
+  if (screen.orientation?.addEventListener) listen(screen.orientation, "change", onOrientationChange);
 
   return {
     triggerFullscreenSync,
     cleanup() {
       disposed = true;
       cancelAnimationFrame(animationId);
-      window.removeEventListener("resize", scheduleViewportSync);
-      window.removeEventListener("orientationchange", onOrientationChange);
-      orientationMedia?.removeEventListener?.("change", onOrientationChange);
-      window.visualViewport?.removeEventListener("resize", scheduleViewportSync);
-      document.removeEventListener("fullscreenchange", onFullscreenChange);
-      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
-      screen.orientation?.removeEventListener?.("change", onOrientationChange);
+      removeListeners();
       if (timerId) {
         window.clearTimeout(timerId);
       }

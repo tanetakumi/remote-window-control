@@ -14,22 +14,16 @@ import (
 	"sync"
 	"time"
 
-	"share-app-host/internal/auth"
 	"share-app-host/internal/nativecapture"
 	"share-app-host/internal/targetwindow"
 	"share-app-host/internal/websecurity"
 )
 
-type SessionIssuer interface {
-	Exchange(secret string) (auth.Session, error)
-	Validate(token string) (auth.Session, error)
-}
 type targetSelector interface {
-	SelectTarget(context.Context, string, uint64) (nativecapture.WindowInfo, error)
+	SelectTarget(context.Context, uint64) (nativecapture.WindowInfo, error)
 }
 type Server struct {
 	httpServer  *http.Server
-	sessions    SessionIssuer
 	clientDir   string
 	snapshotDir string
 	snapshotMu  sync.Mutex
@@ -38,11 +32,10 @@ type Server struct {
 	selector    targetSelector
 }
 
-func New(addr, clientDir string, sessions SessionIssuer, wsHandler http.Handler, capture *nativecapture.Bridge, targets *targetwindow.Manager, baseDir string) *Server {
-	s := &Server{sessions: sessions, clientDir: clientDir, capture: capture, targets: targets, snapshotDir: filepath.Join(baseDir, "snapshots")}
+func New(addr, clientDir string, wsHandler http.Handler, capture *nativecapture.Bridge, targets *targetwindow.Manager, baseDir string) *Server {
+	s := &Server{clientDir: clientDir, capture: capture, targets: targets, snapshotDir: filepath.Join(baseDir, "snapshots")}
 	s.selector, _ = wsHandler.(targetSelector)
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/session", s.handleExchangeSession)
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/windows", s.handleListWindows)
 	mux.HandleFunc("/api/target-window", s.handleTargetWindow)
@@ -66,42 +59,11 @@ func New(addr, clientDir string, sessions SessionIssuer, wsHandler http.Handler,
 }
 func (s *Server) ListenAndServe() error              { return s.httpServer.ListenAndServe() }
 func (s *Server) Shutdown(ctx context.Context) error { return s.httpServer.Shutdown(ctx) }
-func (s *Server) handleExchangeSession(w http.ResponseWriter, r *http.Request) {
-	var payload struct {
-		Secret string `json:"secret"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&payload); err != nil {
-		http.Error(w, "invalid session request", 400)
-		return
-	}
-	session, err := s.sessions.Exchange(payload.Secret)
-	if err != nil {
-		http.Error(w, "unauthorized", 401)
-		return
-	}
-	writeJSON(w, session)
-}
-func (s *Server) authorize(w http.ResponseWriter, r *http.Request) bool {
-	if _, err := s.sessions.Validate(bearerToken(r)); err != nil {
-		http.Error(w, "unauthorized", 401)
-		return false
-	}
-	return true
-}
-func bearerToken(r *http.Request) string {
-	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-}
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	if !s.authorize(w, r) {
-		return
-	}
 	selected, _ := s.targets.Current()
 	writeJSON(w, map[string]any{"webrtc": map[string]any{"iceServers": []any{}}, "target_window": selected})
 }
 func (s *Server) handleListWindows(w http.ResponseWriter, r *http.Request) {
-	if !s.authorize(w, r) {
-		return
-	}
 	windows, err := s.targets.List(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), 502)
@@ -110,9 +72,6 @@ func (s *Server) handleListWindows(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, windows)
 }
 func (s *Server) handleTargetWindow(w http.ResponseWriter, r *http.Request) {
-	if !s.authorize(w, r) {
-		return
-	}
 	switch r.Method {
 	case http.MethodGet:
 		selected, ok := s.targets.Current()
@@ -132,7 +91,7 @@ func (s *Server) handleTargetWindow(w http.ResponseWriter, r *http.Request) {
 		var selected nativecapture.WindowInfo
 		var err error
 		if s.selector != nil {
-			selected, err = s.selector.SelectTarget(r.Context(), bearerToken(r), payload.Handle)
+			selected, err = s.selector.SelectTarget(r.Context(), payload.Handle)
 		} else {
 			selected, err = s.targets.Select(r.Context(), payload.Handle)
 		}
@@ -168,9 +127,6 @@ func snapshotName(name string) bool {
 	return true
 }
 func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
-	if !s.authorize(w, r) {
-		return
-	}
 	name := r.URL.Query().Get("out")
 	if name != "" && !snapshotName(name) {
 		http.Error(w, "out must be a simple PNG filename", 400)
@@ -246,7 +202,7 @@ func (s *Server) staticHandler() http.Handler {
 			name = "index.html"
 		}
 		switch strings.ToLower(filepath.Ext(name)) {
-		case ".html", ".css", ".js", ".webmanifest", ".png", ".svg", ".ico", ".jpg", ".jpeg", ".webp", ".woff", ".woff2":
+		case ".html", ".css", ".js", ".png", ".svg", ".ico", ".jpg", ".jpeg", ".webp", ".woff", ".woff2":
 		default:
 			http.NotFound(w, r)
 			return
@@ -273,9 +229,6 @@ func (s *Server) staticHandler() http.Handler {
 		if err != nil || !info.Mode().IsRegular() {
 			http.NotFound(w, r)
 			return
-		}
-		if name == "manifest.webmanifest" {
-			w.Header().Set("Content-Type", "application/manifest+json")
 		}
 		if name == "index.html" || name == "sw.js" {
 			w.Header().Set("Cache-Control", "no-cache")

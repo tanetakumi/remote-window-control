@@ -4,11 +4,11 @@ Updated 2026-10-01. Implementation is in progress. Portable regression tests and
 
 ## Agreed product scope
 
-- Native Windows 11 host; default HTTP listen address `:8443` on all interfaces.
-- HTTP assets/APIs, shared-secret authentication, WebSocket signaling, Pion WebRTC and existing Win32 input.
+- Native Windows 11 host; default HTTP listen address `127.0.0.1:8443` on loopback only.
+- HTTP assets/APIs, WebSocket signaling, Pion WebRTC and existing Win32 input. Authentication belongs to the external Cloudflare Access layer; the application has no authentication code.
 - Exactly one active control connection, including while the previous connection's workers are closing.
 - iPhone browser client, initially Safari; no dedicated phone application.
-- Existing window selection, WGC capture, gestures, keyboard/text, fullscreen, viewport resizing, bitrate, PWA guidance, waiting display, host UI and snapshots remain.
+- Existing window selection, WGC capture, gestures, keyboard/text, fullscreen, viewport resizing, bitrate, waiting display, host UI and snapshots remain.
 - Long-lived CaptureProbe and ffmpeg processes; BGRA local pipes and VP8/IVF remain.
 - Vendor-specific network integration is removed. External HTTPS, tunnels, NAT/relay provisioning, Docker and Cloudflare are outside implementation scope.
 - Measure before tuning quality or claiming whole-application performance improvements. Self-contained delivery follows Windows optimization/compatibility validation.
@@ -16,7 +16,7 @@ Updated 2026-10-01. Implementation is in progress. Portable regression tests and
 ## Structure and naming decisions
 
 ```text
-web-ui/                                  mobile PWA and test/
+web-ui/                                  mobile web client and test/
 control-server/                          Go service and package-local tests
 window-capture/
   apps/CaptureProbe/                      runtime executable
@@ -27,7 +27,7 @@ docs/validation.md                       repeatable verification and remaining g
 
 Completed: moved CaptureProbe from `tests/` to `apps/`, moved root scripts into `scripts/`, renamed `Class1.cs` to `Models.cs`, and separated Windows input implementations with `_windows.go` filenames. Updated solution, bridge resolution, build scripts, CI and documentation together.
 
-The source directories now describe their functions: `web-ui/` executes in the browser, `control-server/` serves HTTP/WebRTC and injects input, and `window-capture/` supplies WGC/list/snapshot. Updated asset/helper discovery, tests, scripts, CI and documentation together. Keep `share-host.exe`, `CaptureProbe.exe`, module/package names and existing non-vendor environment names stable. Do not introduce a new framework or merge projects without a demonstrated benefit.
+The source directories now describe their functions: `web-ui/` executes in the browser, `control-server/` serves HTTP/WebRTC and injects input, and `window-capture/` supplies WGC/list/snapshot. Updated asset/helper discovery, tests, scripts, CI and documentation together. Keep `share-host.exe`, `CaptureProbe.exe`, module/package names and supported environment names stable. `SHARE_APP_SECRET` was removed with application authentication. Do not introduce a new framework or merge projects without a demonstrated benefit.
 
 Development guidance formerly in the root agent file is consolidated into README.md. Keep required root SDK/config/license files; the roadmap lives under docs/ and Renovate configuration under .github/.
 
@@ -58,7 +58,7 @@ SDK versions are pinned by `.node-version`, `global.json` and `go.mod`. npm, Go 
 | Area | Implemented | Verification still needed |
 | --- | --- | --- |
 | Static serving | explicit single root, os.Root containment, hidden/directory/unsupported-type rejection, no parent fallback | Windows reparse-point cases |
-| Authentication | all retained privileged APIs require Bearer tokens, loopback bypass removed, same-host origins, JSON secret exchange, 12-hour sessions and bounded store | interactive host UI/device workflow |
+| External access boundary | application authentication removed; loopback HTTP default; same-host Origin checks retained; target selection is shared without identity tracking | Cloudflare Access/Tunnel deployment and interactive host UI/device workflow |
 | Snapshots | PNG download or new filename under snapshots/, exclusive creation, reserved-name/path rejection, one helper and bounded execution | real WGC PNG and file creation on Windows |
 | Connection ownership | atomic slot acquired before peer creation, second connection rejected, shutdown waits for peer/process/input cleanup | repeated real-device connect/disconnect |
 | Browser lifecycle | await media connection and decoded video, bounded readiness timeout, serialized answer/ICE, early ICE queue, explicit close, monitor/listener cleanup, return to selector, cancel pending connection on background/page exit | Safari autoplay/background/BFCache behavior |
@@ -84,15 +84,15 @@ Retain the existing encoder baseline: 10fps, libvpx/VP8, 6M bitrate, CRF 10, rea
 
 1. **Interactive Windows compatibility gate.** Run the checks in docs/validation.md on Windows 11. Validate .NET 10/WinRT/Vortice, list/stream/snapshot, resize, closure, stalls, held-input release and mixed-DPI coordinates. Fix failures before further optimization or distribution claims.
 2. **Measure the full pipeline.** Record fps, resolution, capture/encode/input latency, CPU, memory, allocations and quality for the same windows and workloads. Include repeated target changes, stalled capture, slow encoder and connect/disconnect. Compare with the prior revision where it can run safely on an isolated network. Keep the baseline settings; tune only from measurements.
-3. **Safari/iPhone gate.** Record iOS/browser version and a reachable test URL. Check English UI, actual playback, Japanese IME, paste/replacement, spaces/Backspace/Enter, drag/touchcancel, scroll, rotation, fullscreen support, keyboard/viewport, PWA installation and background/foreground recovery. External endpoint provisioning is a separate activity.
+3. **Safari/iPhone gate.** Record iOS/browser version and a reachable test URL. Check English UI, actual playback, Japanese IME, paste/replacement, spaces/Backspace/Enter, drag/touchcancel, scroll, rotation, fullscreen support, keyboard/viewport and background/foreground recovery. External endpoint provisioning is a separate activity.
 4. **Self-contained packaging.** After the compatibility/measurement gates, publish CaptureProbe for win-x64 with validated .NET 10 self-contained runtime. Bundle a pinned ffmpeg build with libvpx, checksum and redistribution notices. Use the existing release-local ffmpeg resolver and web/ root. Avoid trimming/AOT/single-file experiments until ordinary publishing works.
-5. **Clean-machine and CI release gate.** Run the unzipped folder on a clean interactive Windows 11 machine with no Go/Node/.NET runtime/SDK/ffmpeg installation. Confirm config, auth, media, input and snapshots. Only then mark the distribution self-contained and update release claims. Continue shipping bundled runtime security patches in later releases.
+5. **Clean-machine and CI release gate.** Run the unzipped folder on a clean interactive Windows 11 machine with no Go/Node/.NET runtime/SDK/ffmpeg installation. Confirm config, external access, media, input and snapshots. Only then mark the distribution self-contained and update release claims. Continue shipping bundled runtime security patches in later releases.
 
 Current CI packaging remains framework-dependent and uses external ffmpeg. This is explicitly documented as a development distribution. Cross-compilation does not satisfy the Windows, iPhone or clean-machine gates.
 
 ## Completion criteria
 
-- Windows 11 serves HTTP on all interfaces at :8443; privileged operations are authenticated independently of external infrastructure.
+- Windows 11 serves HTTP on `127.0.0.1:8443` by default; external authentication is enforced by Cloudflare Access/Tunnel, with no application login or credential store.
 - Only client assets are exposed; caller snapshot paths cannot write outside the designated directory.
 - Exactly one control connection and at most one streaming capture/encoder pair; separate snapshots remain bounded.
 - Retained features work with English product text and the existing WGC/Win32 approach.

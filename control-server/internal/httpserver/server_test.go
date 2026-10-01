@@ -5,14 +5,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"share-app-host/internal/auth"
 	"share-app-host/internal/nativecapture"
 	"share-app-host/internal/targetwindow"
 	"strings"
 	"testing"
 )
 
-func testServer(t *testing.T) (*Server, string) {
+func testServer(t *testing.T) *Server {
 	t.Helper()
 	base := t.TempDir()
 	web := filepath.Join(base, "web")
@@ -24,20 +23,12 @@ func testServer(t *testing.T) (*Server, string) {
 			t.Fatal(err)
 		}
 	}
-	store := auth.NewStore("secret")
-	session, err := store.Exchange("secret")
-	if err != nil {
-		t.Fatal(err)
-	}
 	bridge := nativecapture.NewBridge(base)
-	return New(":8443", web, store, http.NotFoundHandler(), bridge, targetwindow.NewManager(bridge), base), session.Token
+	return New("127.0.0.1:8443", web, http.NotFoundHandler(), bridge, targetwindow.NewManager(bridge), base)
 }
-func request(s *Server, method, path, token, origin string) *httptest.ResponseRecorder {
+func request(s *Server, method, path, origin string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, "http://host:8443"+path, nil)
 	r.RemoteAddr = "127.0.0.1:1234"
-	if token != "" {
-		r.Header.Set("Authorization", "Bearer "+token)
-	}
 	if origin != "" {
 		r.Header.Set("Origin", origin)
 	}
@@ -46,48 +37,56 @@ func request(s *Server, method, path, token, origin string) *httptest.ResponseRe
 	return w
 }
 func TestStaticContainment(t *testing.T) {
-	s, _ := testServer(t)
+	s := testServer(t)
 	if err := os.Symlink(filepath.Join(filepath.Dir(s.clientDir), "private.js"), filepath.Join(s.clientDir, "escape.js")); err != nil {
 		t.Log("symlink check unavailable:", err)
 	}
 	for _, path := range []string{"/private.key", "/private.js", "/.env", "/escape.js", "/../private.key", "/%2e%2e/private.key", "/%2e%2e%5cprivate.key", "/C:/private.key", "/missing/"} {
-		w := request(s, "GET", path, "", "")
+		w := request(s, "GET", path, "")
 		if strings.Contains(w.Body.String(), "secret") || w.Code == 200 {
 			t.Errorf("exposed %s: %d %s", path, w.Code, w.Body.String())
 		}
 	}
-	if w := request(s, "GET", "/", "", ""); w.Code != 200 || w.Body.String() != "client" {
+	if w := request(s, "GET", "/", ""); w.Code != 200 || w.Body.String() != "client" {
 		t.Fatalf("client unavailable: %d", w.Code)
 	}
 }
-func TestAPIsRequireAuthEvenOnLoopback(t *testing.T) {
-	s, token := testServer(t)
-	for _, path := range []string{"/api/config", "/api/windows", "/api/target-window", "/api/snapshot"} {
-		if w := request(s, "GET", path, "", ""); w.Code != 401 {
-			t.Errorf("%s: %d", path, w.Code)
+func TestAPIsWorkWithoutCredentialsAndRejectCrossOrigin(t *testing.T) {
+	s := testServer(t)
+	// No helper or selected window exists in this fixture. Those endpoints
+	// report their normal errors without requiring application credentials.
+	for path, want := range map[string]int{"/api/config": 200, "/api/windows": 502, "/api/target-window": 200, "/api/snapshot": 400} {
+		if w := request(s, "GET", path, ""); w.Code != want {
+			t.Errorf("%s: got %d, want %d", path, w.Code, want)
+		}
+		if w := request(s, "GET", path, "https://other-host"); w.Code != 403 {
+			t.Errorf("cross-origin %s: %d", path, w.Code)
 		}
 	}
-	if w := request(s, "GET", "/api/config", token, ""); w.Code != 200 {
-		t.Fatalf("authorized config: %d", w.Code)
-	}
-	if w := request(s, "GET", "/api/config", token, "https://other-host"); w.Code != 403 {
-		t.Fatalf("cross-origin config: %d", w.Code)
-	}
-	if w := request(s, "GET", "/api/config", token, "https://host:8443"); w.Code != 200 {
+	if w := request(s, "GET", "/api/config", "https://host:8443"); w.Code != 200 {
 		t.Fatalf("HTTPS proxy origin: %d", w.Code)
 	}
-	if w := request(s, "GET", "/host-ui", "", ""); w.Code != 200 {
-		t.Fatalf("login shell: %d", w.Code)
+	if w := request(s, "POST", "/api/target-window", ""); w.Code != 400 {
+		t.Fatalf("invalid target request: %d", w.Code)
+	}
+	if w := request(s, "POST", "/api/target-window", "https://other-host"); w.Code != 403 {
+		t.Fatalf("cross-origin target change: %d", w.Code)
+	}
+	if w := request(s, "GET", "/api/session", ""); w.Code != 404 {
+		t.Fatalf("removed session endpoint: %d", w.Code)
+	}
+	if w := request(s, "GET", "/host-ui", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "Select a target window") {
+		t.Fatalf("host UI: %d", w.Code)
 	}
 }
 func TestSnapshotRejectsUnrestrictedOutputBeforeCapture(t *testing.T) {
-	s, token := testServer(t)
+	s := testServer(t)
 	for _, name := range []string{"../secret.png", "d:/secret.png", "CON.png", "NUL.png", "COM1.png", "LPT9.png", ".hidden.png", "a.exe", "a.png:stream", "folder/file.png"} {
 		if snapshotName(name) {
 			t.Errorf("accepted %q", name)
 		}
 	}
-	if w := request(s, "GET", "/api/snapshot?hwnd=1&out=../secret.png", token, ""); w.Code != 400 {
+	if w := request(s, "GET", "/api/snapshot?hwnd=1&out=../secret.png", ""); w.Code != 400 {
 		t.Fatalf("snapshot path: %d", w.Code)
 	}
 	if !snapshotName("window-2026.png") {

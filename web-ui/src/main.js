@@ -1,16 +1,11 @@
 import "./styles.css";
 
-import { bootstrapAuth, clearToken, getStoredToken } from "./auth.js";
-import { fetchWindows, setTargetWindow } from "./api.js";
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
-}
-import { attachGestureControls } from "./gestures.js";
-import { attachInstallPrompt } from "./install-prompt.js";
-import { attachKeyboardBridge } from "./keyboard.js";
-import { attachViewportSync } from "./viewport.js";
-import { createRemoteConnection } from "./webrtc.js";
+import { fetchWindows, setTargetWindow } from "./core/api.js";
+import { createRemoteConnection } from "./core/webrtc.js";
+import { attachGestureControls } from "./input/gestures.js";
+import { attachKeyboardBridge } from "./input/keyboard.js";
+import { attachViewportSync } from "./input/viewport.js";
+import { createListenerTracker } from "./lib/events.js";
 
 const selectScreen = document.querySelector("#select-screen");
 const remoteScreen = document.querySelector("#remote-screen");
@@ -27,13 +22,45 @@ const hiddenInput = document.querySelector("#hidden-text-input");
 const backspaceButton = document.querySelector("#backspace-button");
 const enterButton = document.querySelector("#enter-button");
 
+let connecting = false;
+let cleanupRemote = () => {};
+let connectionAbort;
+
+function renderWindowList(windows, onSelect) {
+  windowList.replaceChildren();
+
+  for (const target of windows) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "window-card";
+
+    const title = document.createElement("span");
+    title.className = "window-card-title";
+    title.textContent = target.title || "(untitled)";
+
+    const sub = document.createElement("span");
+    sub.className = "window-card-sub";
+    sub.textContent = target.process_name ? ` · ${target.process_name}` : "";
+
+    card.append(title, sub);
+    card.addEventListener("click", () => onSelect(target));
+    windowList.appendChild(card);
+  }
+}
+
+function setWindowListEnabled(enabled) {
+  for (const button of windowList.querySelectorAll("button")) {
+    button.disabled = !enabled;
+  }
+}
+
 function setStatus(message) {
   statusElement.textContent = message;
 }
 
 function attachTopBarControls(onFullscreenChange) {
-  const controller = new AbortController();
-  fullscreenButton?.addEventListener("click", async () => {
+  const { listen, cleanup } = createListenerTracker();
+  listen(fullscreenButton, "click", async () => {
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
@@ -44,81 +71,47 @@ function attachTopBarControls(onFullscreenChange) {
       onFullscreenChange?.();
 
     } catch {
-      setStatus("Fullscreen is unavailable in this browser. Use the installed app for more screen space.");
+      setStatus("Fullscreen is unavailable in this browser.");
     }
-  }, { signal: controller.signal });
-  return () => controller.abort();
+  });
+  return cleanup;
 }
 
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-async function showWindowSelect(token) {
+async function showWindowSelect() {
+  selectStatus.textContent = "Loading windows…";
   try {
-    if (selectStatus) selectStatus.textContent = "Loading windows…";
-    const windows = await fetchWindows(token);
-
-    if (windowList) windowList.innerHTML = "";
-    if (windows.length === 0) {
-      if (selectStatus) selectStatus.textContent = "No windows available";
-      return;
-    }
-    if (selectStatus) selectStatus.textContent = "";
-    for (const w of windows) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "window-card";
-      const title = w.title || "(untitled)";
-      const sub = w.process_name ? ` · ${w.process_name}` : "";
-      card.innerHTML = `
-        <span class="window-card-title">${escapeHtml(title)}</span>
-        <span class="window-card-sub">${escapeHtml(sub)}</span>
-      `;
-      card.addEventListener("click", async () => {
-        if (connecting) return;
-        connecting = true;
-        windowList.querySelectorAll("button").forEach((button) => { button.disabled = true; });
-        if (selectStatus) selectStatus.textContent = "Connecting…";
-        try {
-          await setTargetWindow(getStoredToken() ?? token, w.handle);
-          if (selectScreen) selectScreen.hidden = true;
-          if (remoteScreen) remoteScreen.hidden = false;
-          await startRemoteControl(getStoredToken());
-        } catch (err) {
-          console.error("Connection failed:", err);
-          if (selectScreen) selectScreen.hidden = false;
-          if (remoteScreen) remoteScreen.hidden = true;
-          const msg = err instanceof Error ? err.message : "Error";
-          if (selectStatus) selectStatus.textContent = msg;
-          if (statusElement) statusElement.textContent = msg;
-          windowList.querySelectorAll("button").forEach((button) => { button.disabled = false; });
-        } finally {
-          connecting = false;
-        }
-      });
-      windowList?.appendChild(card);
-    }
+    const windows = await fetchWindows();
+    renderWindowList(windows, connectToWindow);
+    selectStatus.textContent = windows.length === 0 ? "No windows available" : "";
   } catch (err) {
-    if (selectStatus) selectStatus.textContent = err instanceof Error ? err.message : "Loading failed";
+    selectStatus.textContent = err instanceof Error ? err.message : "Loading failed";
   }
 }
 
-let connecting = false;
-let cleanupRemote = () => {};
-let connectionAbort;
+async function connectToWindow(target) {
+  if (connecting) return;
+  connecting = true;
+  setWindowListEnabled(false);
+  selectStatus.textContent = "Connecting…";
+  try {
+    await setTargetWindow(target.handle);
+    selectScreen.hidden = true;
+    remoteScreen.hidden = false;
+    await startRemoteControl();
+  } catch (err) {
+    console.error("Connection failed:", err);
+    returnToWindows(err instanceof Error ? err.message : "Error");
+  } finally {
+    connecting = false;
+  }
+}
 
-async function startRemoteControl(token) {
+async function startRemoteControl() {
   cleanupRemote();
   connectionAbort?.abort();
   connectionAbort = new AbortController();
   waitingElement.hidden = false;
   const remote = await createRemoteConnection({
-    token,
     signal: connectionAbort.signal,
     videoElement,
     onStatus: setStatus,
@@ -149,44 +142,28 @@ async function startRemoteControl(token) {
   setStatus("Control ready");
 }
 
-videoElement.addEventListener("click", () => videoElement.play()?.catch(() => setStatus("Playback could not start.")));
 function returnToWindows(message = "Select a window to connect.") {
   cleanupRemote();
   connectionAbort?.abort();
   selectScreen.hidden = false;
   remoteScreen.hidden = true;
   selectStatus.textContent = message;
-  windowList.querySelectorAll("button").forEach((button) => { button.disabled = false; });
+  setWindowListEnabled(true);
 }
+
+videoElement.addEventListener("click", () => videoElement.play()?.catch(() => setStatus("Playback could not start.")));
 document.querySelector("#windows-button").addEventListener("click", () => {
   returnToWindows();
-  showWindowSelect(getStoredToken());
+  showWindowSelect();
 });
-document.querySelector("#refresh-button").addEventListener("click", () => { if (!connecting) showWindowSelect(getStoredToken()); });
+document.querySelector("#refresh-button").addEventListener("click", () => { if (!connecting) showWindowSelect(); });
 window.addEventListener("pagehide", () => returnToWindows());
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) returnToWindows("Connection paused. Select a window to reconnect.");
 });
 
 async function main() {
-  attachInstallPrompt(document.body, (msg) => {
-    if (selectStatus) selectStatus.textContent = msg;
-    if (statusElement) statusElement.textContent = msg;
-  });
-
-  try {
-    const token = await bootstrapAuth();
-    if (!token) {
-      if (selectStatus) selectStatus.textContent = "Open the host link containing the secret parameter.";
-      if (statusElement) statusElement.textContent = "Open the host link containing the secret parameter.";
-      return;
-    }
-
-    await showWindowSelect(token);
-  } catch (error) {
-    clearToken();
-    if (selectStatus) selectStatus.textContent = error instanceof Error ? error.message : "Error";
-  }
+  await showWindowSelect();
 }
 
 main();

@@ -1,3 +1,5 @@
+import { createListenerTracker } from "../lib/events.js";
+
 const LONG_PRESS_MS = 450;
 const TAP_SLOP_PX = 12;
 const SCROLL_SENSITIVITY = 0.8;
@@ -46,11 +48,7 @@ export function attachGestureControls(videoElement, sendControl, onStatus) {
   let longPressPoint = null;
   let tapCancelled = false;
   let multiTouch = false;
-  const listeners = [];
-  const listen = (type, handler, options) => {
-    videoElement.addEventListener(type, handler, options);
-    listeners.push(() => videoElement.removeEventListener(type, handler, options));
-  };
+  const { listen, cleanup: removeListeners } = createListenerTracker();
 
   const distance = (a, b) => {
     if (!a || !b) {
@@ -76,7 +74,7 @@ export function attachGestureControls(videoElement, sendControl, onStatus) {
     }
   };
 
-  listen("touchstart", (event) => {
+  listen(videoElement, "touchstart", (event) => {
     event.preventDefault();
 
     if (event.touches.length === 1 && !multiTouch) {
@@ -119,7 +117,7 @@ export function attachGestureControls(videoElement, sendControl, onStatus) {
     }
   }, { passive: false });
 
-  listen("touchmove", (event) => {
+  listen(videoElement, "touchmove", (event) => {
     event.preventDefault();
 
     if (event.touches.length === 1 && !multiTouch) {
@@ -172,7 +170,7 @@ export function attachGestureControls(videoElement, sendControl, onStatus) {
     }
   }, { passive: false });
 
-  listen("touchend", (event) => {
+  listen(videoElement, "touchend", (event) => {
     event.preventDefault();
     cancelLongPress();
     if (event.touches.length > 0) return;
@@ -203,7 +201,6 @@ export function attachGestureControls(videoElement, sendControl, onStatus) {
     longPressPoint = null;
     tapCancelled = false;
     multiTouch = false;
-    cancelLongPress();
   }, { passive: false });
 
   const release = () => {
@@ -215,9 +212,9 @@ export function attachGestureControls(videoElement, sendControl, onStatus) {
     lastScrollPoint = previousTwoFingerCenter = touchStartPoint = longPressPoint = null;
     cancelLongPress();
   };
-  listen("touchcancel", release);
+  listen(videoElement, "touchcancel", release);
   return () => {
     release();
-    listeners.forEach((remove) => remove());
+    removeListeners();
   };
 }

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { attachGestureControls } from "../src/gestures.js";
-import { attachKeyboardBridge } from "../src/keyboard.js";
-import { createRemoteConnection } from "../src/webrtc.js";
+import { attachGestureControls } from "../src/input/gestures.js";
+import { attachKeyboardBridge } from "../src/input/keyboard.js";
+import { createRemoteConnection } from "../src/core/webrtc.js";
 
 class Element extends EventTarget {
   value = "";
@@ -113,7 +113,7 @@ class Socket extends EventTarget {
   static OPEN = 1;
   static current;
   readyState = 1;
-  constructor() { super(); Socket.current = this; }
+  constructor(url) { super(); this.url = url; Socket.current = this; }
   send() {}
   close() { this.readyState = 3; }
 }
@@ -126,7 +126,8 @@ test("connection waits for media and decoded video, queues early ICE, and closes
   let resolved = false;
   let stopped = false;
   let failure;
-  const pending = createRemoteConnection({ token: "test", videoElement: video, onDisconnect: (error) => { failure = error; } });
+  const pending = createRemoteConnection({ videoElement: video, onDisconnect: (error) => { failure = error; } });
+  assert.equal(Socket.current.url, "ws://host:8443/ws");
   pending.then(() => { resolved = true; });
   emit(Socket.current, "open");
   emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.ice", candidate: { candidate: "early" } }) });
@@ -152,13 +153,15 @@ test("connection waits for media and decoded video, queues early ICE, and closes
 
 test("host error rejects readiness and abort cancels a pending connection", async () => {
   const video = new Element();
-  const pending = createRemoteConnection({ token: "test", videoElement: video });
+  window.location = { protocol: "https:", host: "remote.example.com" };
+  const pending = createRemoteConnection({ videoElement: video });
+  assert.equal(Socket.current.url, "wss://remote.example.com/ws");
   const rejected = assert.rejects(pending, /busy/);
   emit(Socket.current, "message", { data: JSON.stringify({ type: "error", message: "busy" }) });
   await rejected;
   assert.equal(Peer.current.connectionState, "closed");
   const abort = new AbortController();
-  const cancelled = createRemoteConnection({ token: "test", videoElement: video, signal: abort.signal });
+  const cancelled = createRemoteConnection({ videoElement: video, signal: abort.signal });
   const rejection = assert.rejects(cancelled, /cancelled/);
   abort.abort();
   await rejection;

@@ -5,20 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/generate-icons.js && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "test": "node --test"
   },
   "keywords": [
-    "pwa",
     "webrtc",
     "remote-control"
   ],
   "author": "",
   "license": "MIT",
-  "description": "Mobile PWA client for remote window control.",
+  "description": "Mobile web client for remote window control.",
   "devDependencies": {
-    "sharp": "0.35.5",
     "vite": "8.3.1"
   },
   "engines": {

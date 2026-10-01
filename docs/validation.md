@@ -34,13 +34,13 @@ The initial client dependency install and Vite 5 build passed before modernizati
 
 Client regressions cover two-finger touchend suppression, touchcancel button release, space/IME/replacement handling, bounded Unicode paste, connected/decoded-video readiness, early ICE, host errors, abort and listener disposal.
 
-Go regressions cover authenticated loopback APIs, cross-origin rejection, secret/parent/traversal/symlink containment, snapshot path/device-name rejection, literal configuration and environment precedence, late input/held-input release, malformed/truncated/duplicate frames, reusable-buffer ownership, concurrent subprocess close, bounded concurrent diagnostics, slot ownership and real encoder cleanup.
+Go regressions cover credential-free loopback APIs, cross-origin rejection, private-file/parent/traversal/symlink containment, snapshot path/device-name rejection, literal configuration and environment precedence, late input/held-input release, malformed/truncated/duplicate frames, reusable-buffer ownership, concurrent subprocess close, bounded concurrent diagnostics, single connection limits and real encoder cleanup.
 
 Portable Go test command, from `control-server/`:
 
 ```bash
 /path/to/verified/go test -race \
-  ./internal/auth ./internal/config ./internal/httpserver ./internal/input \
+  ./internal/config ./internal/httpserver ./internal/input \
   ./internal/nativecapture ./internal/processio ./internal/signaling \
   ./internal/targetwindow ./internal/webrtc ./internal/websecurity
 ```
@@ -81,10 +81,10 @@ Native per-frame Task.Run removal, copied-frame ID tracking and snapshot-copy re
 On an interactive Windows 11 machine:
 
 1. Run `scripts/build.ps1 -Check`; record exact Windows build, GPU/driver, SDK versions and ffmpeg build/libvpx support. Exercise the CI workflow on the retained Windows runner.
-2. Start from the repository root with `.env`, then from the packaged folder with a different current directory. Verify environment overrides, default HTTP :8443 binding and release-relative assets/helper/encoder lookup.
-3. Authenticate through the mobile client and host UI. Confirm no loopback privilege bypass, no unauthenticated config/window/target/snapshot access and no unwanted static file access, including NTFS reparse points.
+2. Start from the repository root with `.env`, then from the packaged folder with a different current directory. Verify environment overrides, default HTTP `127.0.0.1:8443` binding and release-relative assets/helper/encoder lookup.
+3. Open the mobile client and host UI without application credentials. For remote access, authenticate through Cloudflare Access and confirm the whole hostname is protected, including APIs and WebSocket handshakes, with no direct remote route to the origin. Confirm Origin rejection and no unwanted static file access, including NTFS reparse points.
 4. List/select a real window; stream, resize, minimize, restore, close and move it between virtual desktops. Switch to another selectable window while capture is stalled. Verify the old process exits before the new stream starts.
-5. Open two tabs using the same saved token and two devices using different tokens. Confirm only one streaming capture/encoder pair exists; disconnect and reconnect repeatedly. Record process IDs and verify all exit after cleanup/server shutdown.
+5. Open two tabs and two devices. Confirm only one control connection and streaming capture/encoder pair exists; disconnect and reconnect repeatedly. Confirm target selection remains shared while a connection is active. Record process IDs and verify all exit after cleanup/server shutdown.
 6. Test clicks at known client-area landmarks at 100%, 125%, 150% and mixed-monitor DPI; separately record behavior of non-web-ui/title-bar edges. Check right drag flags, scroll routing, long press and release on cancellation/target switch/disconnect. Test unresponsive target text/scroll/resize without blocking recovery.
 7. Check PNG download, new named snapshot save, returned dimensions, collision rejection, arbitrary path rejection and CLI snapshots.
 8. Measure actual fps/resolution, memory, Go allocations, per-process CPU, capture/encode/input latency and screenshot quality over identical workloads. Include a slow encoder and long-running session. Record queue bounds and process counts. Keep quality settings until the comparison supports tuning.
@@ -99,10 +99,10 @@ Use a separately supplied reachable endpoint; record iOS/Safari version, device,
 - English UI/errors/accessibility, usable retry and window selection.
 - Single/two-finger scroll, partial touchend, right drag, touchcancel and last-tap coordinates.
 - Japanese composition/commit, English, spaces, paste/replacement, emoji, Backspace and Enter. Confirm no duplicate key/text paths and synchronous keyboard focus from a gesture.
-- Keyboard viewport suppression, orientation changes, fullscreen availability and standalone PWA install guidance.
-- Page background/foreground, pagehide/BFCache, connectivity loss, reload and host restart with stored-secret token refresh.
+- Keyboard viewport suppression, orientation changes and fullscreen availability.
+- Page background/foreground, pagehide/BFCache, connectivity loss, reload and host restart without application credentials; recovery after an external Access session expires.
 
-HTML fullscreen availability and secure-origin requirements vary by browser context. The UI reports unsupported fullscreen; standalone PWA mode remains available where supported. Endpoint/tunnel/relay provisioning is outside this repository's deliverables.
+HTML fullscreen availability and secure-origin requirements vary by browser context. The UI reports unsupported fullscreen. Endpoint/tunnel/relay provisioning is outside this repository's deliverables.
 
 ## Release gate
 
@@ -113,3 +113,11 @@ The current artifact is framework-dependent and requires external ffmpeg. After 
 The source roots were renamed to `web-ui/`, `control-server/` and `window-capture/`. Development guidance is consolidated in README.md, the roadmap is in docs/roadmap.md, and Renovate configuration is in .github/renovate.json.
 
 After relocation, the updated `scripts/build.sh` completed the web UI → window capture → control server sequence with the pinned SDKs. The six UI tests, Windows-targeted Go build/vet, portable Go race tests and NuGet locked restore passed again. Configuration regression coverage checks default discovery of `web-ui/dist/` from the renamed repository layout. Documentation links, solution project paths, JSON, shell syntax and ignored build artifacts were checked before committing. Windows/iPhone and release acceptance gates remain open.
+
+## External authentication removal revalidation
+
+Application authentication was removed from both clients, HTTP APIs and WebSocket signaling. The default listen address is now `127.0.0.1:8443`; external authentication belongs to Cloudflare Access/Tunnel. Target selection remains shared during an active connection, with no identity tracking or additional selection restriction.
+
+Using the pinned toolchains above, the client production build, Windows-targeted CaptureProbe build (zero warnings/errors), Windows amd64 Go build/vet and portable Go race tests passed in the required build order. The client suite passed all eight tests with no skips. New and updated coverage checks credential-free API requests, failure handling without authentication retries, HTTP/HTTPS signaling URLs without tokens, removed session routing, cross-origin API/WebSocket rejection, second-connection rejection, reconnect after cleanup and target selection during an active connection. The configuration regression verifies the loopback default.
+
+Cloudflare deployment, real Windows capture/input and Safari/device acceptance were not exercised in this Linux environment.

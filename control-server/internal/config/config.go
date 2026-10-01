@@ -2,15 +2,13 @@ package config
 
 import (
 	"bufio"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-type Config struct{ ListenAddr, ClientDir, BaseDir, Secret string }
+type Config struct{ ListenAddr, ClientDir, BaseDir string }
 
 func Load() (Config, error) {
 	base := resolveBaseDir()
@@ -31,11 +29,7 @@ func Load() (Config, error) {
 	if !filepath.IsAbs(client) {
 		client = filepath.Join(base, client)
 	}
-	secret := value("SHARE_APP_SECRET", "")
-	if secret == "" {
-		secret = randomHex(24)
-	}
-	return Config{ListenAddr: value("SHARE_APP_ADDR", ":8443"), ClientDir: client, BaseDir: base, Secret: secret}, nil
+	return Config{ListenAddr: value("SHARE_APP_ADDR", "127.0.0.1:8443"), ClientDir: client, BaseDir: base}, nil
 }
 
 // Configuration is data, never shell code. Environment variables override the file.
@@ -58,7 +52,7 @@ func readConfig(path string) (map[string]string, error) {
 		key, value, ok := strings.Cut(text, "=")
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
-		if !ok || (key != "SHARE_APP_ADDR" && key != "SHARE_APP_SECRET" && key != "SHARE_APP_CLIENT_DIR") {
+		if !ok || (key != "SHARE_APP_ADDR" && key != "SHARE_APP_CLIENT_DIR") {
 			return nil, fmt.Errorf("invalid configuration key at line %d", line)
 		}
 		if len(value) >= 2 && (value[0] == '"' && value[len(value)-1] == '"' || value[0] == '\'' && value[len(value)-1] == '\'') {
@@ -95,11 +89,4 @@ func resolveClientDir(base string) string {
 		return web
 	}
 	return filepath.Join(base, "web-ui", "dist")
-}
-func randomHex(size int) string {
-	buffer := make([]byte, size)
-	if _, err := rand.Read(buffer); err != nil {
-		panic("could not generate a secret: " + err.Error())
-	}
-	return hex.EncodeToString(buffer)
 }

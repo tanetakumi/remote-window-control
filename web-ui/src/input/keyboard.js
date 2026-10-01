@@ -1,17 +1,14 @@
+import { createListenerTracker } from "../lib/events.js";
+
 const SPECIAL_KEYS = new Set(["Enter", "Tab", "Escape", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
 
-export function attachKeyboardBridge(controls, sendControl, onStatus) {
-  const { buttonElement, inputElement, backspaceButton, enterButton } = controls;
+export function attachKeyboardBridge({ buttonElement, inputElement, backspaceButton, enterButton }, sendControl, onStatus) {
   let keyboardActive = false;
   let composing = false;
   let previousValue = "";
   let disposed = false;
   let focusTimer;
-  const listeners = [];
-  const listen = (element, type, handler, options) => {
-    element?.addEventListener(type, handler, options);
-    listeners.push(() => element?.removeEventListener(type, handler, options));
-  };
+  const { listen, cleanup: removeListeners } = createListenerTracker();
   const sendKey = (key) => {
     sendControl({ type: "input.keyDown", key });
     sendControl({ type: "input.keyUp", key });
@@ -56,6 +53,7 @@ export function attachKeyboardBridge(controls, sendControl, onStatus) {
     onStatus?.(keyboardActive ? "Keyboard active" : "Keyboard hidden");
   });
   for (const [element, key] of [[backspaceButton, "Backspace"], [enterButton, "Enter"]]) {
+    if (!element) continue;
     listen(element, "pointerdown", (event) => event.preventDefault());
     listen(element, "click", (event) => {
       event.preventDefault();
@@ -95,7 +93,7 @@ export function attachKeyboardBridge(controls, sendControl, onStatus) {
       disposed = true;
       keyboardActive = false;
       window.clearTimeout(focusTimer);
-      listeners.forEach((remove) => remove());
+      removeListeners();
       inputElement.blur();
       previousValue = inputElement.value = "";
       syncUi();
