@@ -1,6 +1,6 @@
 # Share App
 
-Control a selected Windows 11 application window from a mobile browser. The Windows host serves a vanilla JavaScript web client, streams WGC video through ffmpeg and Pion WebRTC, and receives touch and keyboard input through a DataChannel or WebSocket. One control connection is allowed at a time.
+Control a selected Windows 11 application window from a mobile browser. The Windows host serves a vanilla JavaScript web client, streams WGC video through ffmpeg and Pion WebRTC, and receives touch and keyboard input through a WebRTC DataChannel; the WebSocket carries only signaling. One control connection is allowed at a time.
 
 ## Source layout
 
@@ -114,16 +114,13 @@ Invoke-RestMethod 'http://127.0.0.1:8443/api/windows'
 Invoke-RestMethod 'http://127.0.0.1:8443/api/target-window' -Method Post -ContentType 'application/json' -Body '{"handle":657830}'
 ```
 
-`GET /api/snapshot` returns PNG bytes for the selected target. The host never writes snapshots to disk and cannot capture a window other than the selected one; the `out` and `hwnd` parameters are refused. One snapshot helper runs at a time, with a 10-second execution timeout.
-
-To save a snapshot of any window to a file, use the CaptureProbe command line:
+`GET /api/snapshot` returns PNG bytes for the selected target. The host never writes snapshots to disk and cannot capture a window other than the selected one; the `out` and `hwnd` parameters are refused. One snapshot helper runs at a time, with a 10-second execution timeout. To keep a copy, save the response:
 
 ```powershell
 Invoke-WebRequest 'http://127.0.0.1:8443/api/snapshot' -OutFile local-copy.png
-dotnet run --project window-capture/apps/CaptureProbe/CaptureProbe.csproj -- --hwnd 657830 --out 'D:\captures\probe.png'
 ```
 
-CLI snapshots use local caller-selected paths. Streaming uses a single long-lived capture process and encoder, never one process per frame.
+Streaming uses a single long-lived capture process and encoder, never one process per frame.
 
 ## Current distribution status
 

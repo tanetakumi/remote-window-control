@@ -1,10 +1,11 @@
 // Package session runs the single remote-control connection: a WebSocket that
-// carries WebRTC signaling and input commands between the browser and the
-// host.
+// carries WebRTC signaling between the browser and the host, and the control
+// data channel that the browser's input commands arrive on.
 package session
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -18,6 +19,8 @@ import (
 )
 
 const handshakeTimeout = 5 * time.Second
+
+var errInputOnWebSocket = errors.New("input must be sent on the control data channel, not the WebSocket")
 
 // Options are the collaborators of a Hub.
 type Options struct {
@@ -136,7 +139,9 @@ func (h *Hub) serve(c *conn) {
 				return
 			}
 		default:
-			control(data)
+			// Input travels only on the control data channel; the WebSocket is
+			// for signaling. Say so, rather than silently dropping it.
+			c.send(message{Type: typeInputError, Message: errInputOnWebSocket.Error()})
 		}
 	}
 }

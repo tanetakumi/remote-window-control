@@ -2,8 +2,9 @@ package session
 
 import pion "github.com/pion/webrtc/v4"
 
-// Message types exchanged with the browser over the WebSocket. Any other type
-// from the browser is an input command, handled by the input dispatcher.
+// Message types exchanged with the browser over the WebSocket, which carries
+// WebRTC signaling and host notices only. Input commands travel on the control
+// data channel; one arriving here is rejected with typeInputError.
 const (
 	typeOffer  = "webrtc.offer"
 	typeAnswer = "webrtc.answer"

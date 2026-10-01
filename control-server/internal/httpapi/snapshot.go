@@ -2,14 +2,13 @@ package httpapi
 
 import "net/http"
 
-// handleSnapshot returns the selected window as a PNG. It is a debugging aid:
-// saving to a file, or capturing another window, is what the CaptureProbe
-// command line does (see the README), so those parameters are refused rather
-// than silently ignored.
+// handleSnapshot returns the selected window as a PNG. It is a debugging aid.
+// File output and per-request window selection were removed, so those
+// parameters are refused rather than silently ignored.
 func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	if query.Has("out") || query.Has("hwnd") {
-		http.Error(w, "snapshot parameters out and hwnd are not supported; use the CaptureProbe command line", http.StatusBadRequest)
+		http.Error(w, "snapshot parameters out and hwnd are not supported", http.StatusBadRequest)
 		return
 	}
 	if !s.snapshotMu.TryLock() {

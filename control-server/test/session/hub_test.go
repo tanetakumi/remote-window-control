@@ -226,71 +226,83 @@ func TestOversizedMessageEndsTheSession(t *testing.T) {
 	expectClosed(t, conn)
 }
 
-func TestInputCommandsReachTheInjector(t *testing.T) {
-	f := newFixture(t)
-	conn := f.connect(t)
-
-	send(t, conn, map[string]any{"type": "input.tap", "button": "left", "x": 0.25, "y": 0.75})
-	send(t, conn, map[string]any{"type": "input.text", "text": "hi"})
+// waitForEvents waits until the injector has recorded at least n events.
+func (f *fixture) waitForEvents(t *testing.T, n int) []string {
+	t.Helper()
 	deadline := time.Now().Add(wait)
-	for len(f.injector.Events()) < 2 {
+	for {
+		if events := f.injector.Events(); len(events) >= n {
+			return events
+		}
 		if time.Now().After(deadline) {
-			t.Fatalf("events: %v", f.injector.Events())
+			t.Fatalf("wanted %d injector events, have %v", n, f.injector.Events())
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if got := f.injector.Events(); got[0] != "tap:left:0.25,0.75" || got[1] != "text:hi" {
-		t.Fatalf("events: %v", got)
+}
+
+func (f *fixture) browser(t *testing.T) *testutil.Browser {
+	t.Helper()
+	return testutil.ConnectBrowser(t, f.address, f.headers)
+}
+
+func TestInputOnTheDataChannelReachesTheInjector(t *testing.T) {
+	f := newFixture(t)
+	b := f.browser(t)
+
+	b.SendInput(t, map[string]any{"type": "input.tap", "button": "left", "x": 0.25, "y": 0.75})
+	b.SendInput(t, map[string]any{"type": "input.text", "text": "hi"})
+	events := f.waitForEvents(t, 2)
+	if events[0] != "tap:left:0.25,0.75" || events[1] != "text:hi" {
+		t.Fatalf("events: %v", events)
 	}
 }
 
 func TestRejectedInputIsReportedWithoutEndingTheSession(t *testing.T) {
 	f := newFixture(t)
-	conn := f.connect(t)
+	b := f.browser(t)
 
-	send(t, conn, map[string]any{"type": "input.explode"})
-	r := readUntil(t, conn, "input.error")
-	if !strings.Contains(r.Message, "unsupported input command") {
-		t.Fatalf("message = %q", r.Message)
+	b.SendInput(t, map[string]any{"type": "input.explode"})
+	r := b.NextReply(t)
+	if r.Type != "input.error" || !strings.Contains(r.Message, "unsupported input command") {
+		t.Fatalf("reply = %+v", r)
 	}
 
-	// The connection is still usable.
-	send(t, conn, map[string]any{"type": "input.text", "text": "still here"})
-	deadline := time.Now().Add(wait)
-	for len(f.injector.Events()) == 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("the session stopped accepting input after a rejected command")
+	// The session is still usable.
+	b.SendInput(t, map[string]any{"type": "input.text", "text": "still here"})
+	f.waitForEvents(t, 1)
+}
+
+// Input has exactly one path. It must be refused on the WebSocket, and told so,
+// rather than being acted on or silently dropped.
+func TestInputOnTheWebSocketIsRejected(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	for i := 0; i < 2; i++ { // the session survives the first rejection
+		send(t, conn, map[string]any{"type": "input.tap", "button": "left", "x": 0.5, "y": 0.5})
+		r := readUntil(t, conn, "input.error")
+		if !strings.Contains(r.Message, "control data channel") {
+			t.Fatalf("message = %q", r.Message)
 		}
-		time.Sleep(5 * time.Millisecond)
+	}
+	if events := f.injector.Events(); len(events) != 0 {
+		t.Fatalf("input from the WebSocket reached the injector: %v", events)
 	}
 }
 
 func TestDisconnectReleasesHeldInput(t *testing.T) {
 	f := newFixture(t)
-	conn := f.connect(t)
+	b := f.browser(t)
 
-	send(t, conn, map[string]any{"type": "input.mouseDown", "button": "left", "x": 0.5, "y": 0.5})
-	send(t, conn, map[string]any{"type": "input.keyDown", "key": "Enter"})
-	deadline := time.Now().Add(wait)
-	for len(f.injector.Events()) < 2 {
-		if time.Now().After(deadline) {
-			t.Fatalf("events before disconnect: %v", f.injector.Events())
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	b.SendInput(t, map[string]any{"type": "input.mouseDown", "button": "left", "x": 0.5, "y": 0.5})
+	b.SendInput(t, map[string]any{"type": "input.keyDown", "key": "Enter"})
+	f.waitForEvents(t, 2)
 
-	_ = conn.Close()
-	for {
-		events := f.injector.Events()
-		if len(events) >= 4 {
-			if events[2] != "up:Enter" || events[3] != "up:left:0.5,0.5" {
-				t.Fatalf("release order: %v", events)
-			}
-			return
-		}
-		if time.Now().After(deadline.Add(wait)) {
-			t.Fatalf("held input not released after disconnect: %v", events)
-		}
-		time.Sleep(5 * time.Millisecond)
+	_ = b.WS.Close()
+	_ = b.PC.Close()
+	events := f.waitForEvents(t, 4)
+	if events[2] != "up:Enter" || events[3] != "up:left:0.5,0.5" {
+		t.Fatalf("release order: %v", events)
 	}
 }
