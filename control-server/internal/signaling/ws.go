@@ -13,14 +13,15 @@ import (
 	pion "github.com/pion/webrtc/v4"
 	"share-app-host/internal/capture"
 	"share-app-host/internal/input"
+	"share-app-host/internal/media"
 	"share-app-host/internal/origin"
-	peerpkg "share-app-host/internal/webrtc"
 	"share-app-host/internal/window"
 )
 
 type Hub struct {
 	dispatcher *input.Dispatcher
 	bridge     *capture.Probe
+	encoder    media.EncoderConfig
 	targets    *window.Selection
 	mu         sync.Mutex
 	active     bool
@@ -35,8 +36,8 @@ type message struct {
 	Candidate *pion.ICECandidateInit `json:"candidate,omitempty"`
 }
 
-func NewHub(dispatcher *input.Dispatcher, bridge *capture.Probe, targets *window.Selection) *Hub {
-	return &Hub{dispatcher: dispatcher, bridge: bridge, targets: targets, upgrader: websocket.Upgrader{CheckOrigin: origin.Same, HandshakeTimeout: 5 * time.Second}}
+func NewHub(dispatcher *input.Dispatcher, bridge *capture.Probe, targets *window.Selection, encoder media.EncoderConfig) *Hub {
+	return &Hub{dispatcher: dispatcher, bridge: bridge, targets: targets, encoder: encoder, upgrader: websocket.Upgrader{CheckOrigin: origin.Same, HandshakeTimeout: 5 * time.Second}}
 }
 func (h *Hub) acquire() bool {
 	h.mu.Lock()
@@ -134,11 +135,18 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			write(map[string]string{"type": "input.error", "message": err.Error()})
 		}
 	}
-	peer, err := peerpkg.NewPeer(h.bridge, h.targets, func(candidate pion.ICECandidateInit) {
-		write(map[string]any{"type": "webrtc.ice", "candidate": candidate})
-	}, control, func(err error) {
-		write(map[string]string{"type": "error", "message": err.Error()})
-		_ = conn.Close()
+	peer, err := media.NewPeer(media.PeerOptions{
+		Source:  media.ProbeSource(h.bridge),
+		Target:  h.targets,
+		Encoder: h.encoder,
+		OnICE: func(candidate pion.ICECandidateInit) {
+			write(map[string]any{"type": "webrtc.ice", "candidate": candidate})
+		},
+		OnControl: control,
+		OnFailure: func(err error) {
+			write(map[string]string{"type": "error", "message": err.Error()})
+			_ = conn.Close()
+		},
 	})
 	if err != nil {
 		write(map[string]string{"type": "error", "message": err.Error()})

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"share-app-host/internal/capture"
 	"share-app-host/internal/input"
+	"share-app-host/internal/media"
 	"share-app-host/internal/window"
 	"sync"
 	"sync/atomic"
@@ -45,7 +46,7 @@ func TestSingleSlotConcurrentAcquisitionAndShutdown(t *testing.T) {
 
 func TestActiveConnectionAllowsTargetSelection(t *testing.T) {
 	bridge := capture.NewProbe(filepath.Join(t.TempDir(), "CaptureProbe.exe"))
-	h := NewHub(input.NewDispatcher(nil), bridge, window.NewSelection(bridge))
+	h := NewHub(input.NewDispatcher(nil), bridge, window.NewSelection(bridge), media.DefaultEncoderConfig("ffmpeg"))
 	if !h.acquire() {
 		t.Fatal("could not acquire control slot")
 	}
