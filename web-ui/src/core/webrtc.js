@@ -3,7 +3,7 @@ function makeSignalingUrl() {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDisconnect, signal }) {
+export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDisconnect, signal, getInitialViewport }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error("Connection cancelled.")); return; }
     const peer = new RTCPeerConnection();
@@ -99,7 +99,17 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
     function onAbort() { fail(new Error("Connection cancelled.")); }
     videoElement.addEventListener("loadeddata", onVideoFrame);
     signal?.addEventListener("abort", onAbort, { once: true });
-    inputChannel.addEventListener("open", checkReady);
+    inputChannel.addEventListener("open", () => {
+      if (closed) return;
+      // Resize as soon as input can be delivered, without waiting for video.
+      try {
+        const viewport = getInitialViewport?.();
+        if (viewport?.width > 0 && viewport?.height > 0) {
+          inputChannel.send(JSON.stringify({ type: "viewport.resize", width: viewport.width, height: viewport.height, devicePixelRatio: viewport.devicePixelRatio }));
+        }
+      } catch (error) { fail(error); return; }
+      checkReady();
+    });
     inputChannel.addEventListener("close", () => fail(new Error("Control channel closed.")));
     peer.addTransceiver("video", { direction: "recvonly" });
     peer.ontrack = (event) => {

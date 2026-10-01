@@ -5,7 +5,7 @@ import { createRemoteConnection } from "./core/webrtc.js";
 import { attachGestureControls } from "./input/gestures.js";
 import { attachMouseControls } from "./input/mouse.js";
 import { attachKeyboardBridge } from "./input/keyboard.js";
-import { attachViewportSync } from "./input/viewport.js";
+import { attachViewportSync, getViewportPayload } from "./input/viewport.js";
 import { createListenerTracker } from "./lib/events.js";
 
 const selectScreen = document.querySelector("#select-screen");
@@ -275,6 +275,7 @@ async function startRemoteControl() {
   waitingElement.hidden = false;
   setStatus("Connecting…");
   const remote = await createRemoteConnection({
+    getInitialViewport: () => getViewportPayload(videoStageElement),
     signal: connectionAbort.signal,
     videoElement,
     onStatus: setStatus,

@@ -1,6 +1,6 @@
 import { createListenerTracker } from "../lib/events.js";
 
-function getViewportPayload(targetElement) {
+export function getViewportPayload(targetElement) {
   const stageRect = targetElement?.getBoundingClientRect();
   const viewport = window.visualViewport;
 

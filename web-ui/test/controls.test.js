@@ -211,3 +211,24 @@ test("a control channel that never opens fails the connection instead of falling
   emit(Channel.current, "close");
   await rejected;
 });
+
+test("initial viewport is resized when control opens before the first video frame", async () => {
+  const video = new Element();
+  let resolved = false;
+  const pending = createRemoteConnection({
+    videoElement: video,
+    getInitialViewport: () => ({ width: 390, height: 720, devicePixelRatio: 2, type: "input.text", text: "not sent" }),
+  });
+  pending.then(() => { resolved = true; });
+  emit(Socket.current, "open");
+  Peer.current.connectionState = "connected";
+  Peer.current.onconnectionstatechange();
+  Channel.current.open();
+  await flush();
+  assert.equal(resolved, false, "resize does not mark video ready");
+  assert.deepEqual(Channel.current.sent.map(JSON.parse), [{ type: "viewport.resize", width: 390, height: 720, devicePixelRatio: 2 }]);
+  Peer.current.ontrack({ streams: [{ getTracks: () => [] }] });
+  emit(video, "loadeddata");
+  const remote = await pending;
+  remote.close();
+});
