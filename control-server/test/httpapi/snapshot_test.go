@@ -54,7 +54,7 @@ func TestSnapshotReturnsPNGBytes(t *testing.T) {
 	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" {
 		t.Fatalf("GET /api/snapshot = %d %q", w.Code, w.Header().Get("Content-Type"))
 	}
-	if string(w.Body.Bytes()) != string(e.snapshots.data) {
+	if w.Body.String() != string(e.snapshots.data) {
 		t.Fatal("response is not the captured image")
 	}
 	if calls := e.snapshots.calls(); len(calls) != 1 || calls[0] != notepad.Handle {

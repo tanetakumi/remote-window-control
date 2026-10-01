@@ -80,7 +80,7 @@ jobs:
         run: |
           $goPath = (Get-Command go).Source
           & $goPath version
-          & $goPath build -o share-host.exe ./cmd/share-host
+          & $goPath build -o bin/share-host.exe ./cmd/share-host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $goPath vet ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -96,7 +96,7 @@ jobs:
           $version = $env:DIST_VERSION
           $dist = "dist/share-app-$version"
           New-Item -ItemType Directory -Force -Path "$dist/web", "$dist/CaptureProbe" | Out-Null
-          Copy-Item control-server/share-host.exe $dist/
+          Copy-Item control-server/bin/share-host.exe $dist/
           Copy-Item -Recurse web-ui/dist/* $dist/web/
           Copy-Item -Recurse dist/native/* $dist/CaptureProbe/
           Copy-Item .env.example, README.md, LICENSE $dist/

@@ -22,7 +22,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "CaptureProbe build failed" }
   Push-Location control-server
   try {
-    & $goPath build -o share-host.exe ./cmd/share-host
+    & $goPath build -o bin/share-host.exe ./cmd/share-host
     if ($LASTEXITCODE -ne 0) { throw "Host build failed" }
     if ($Check) {
       & $goPath vet ./...

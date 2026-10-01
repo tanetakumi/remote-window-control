@@ -6,14 +6,28 @@ Control a selected Windows 11 application window from a mobile browser. The Wind
 
 ```text
 web-ui/                                Vite mobile web client; regression tests in test/
-control-server/                        Go server and package tests
+control-server/                        Go host (module share-app-host)
+  cmd/share-host/                      entry point
+  internal/
+    app/                               wiring, lifecycle, target-switching service
+    config/                            .env / environment settings and path discovery
+    httpapi/                           JSON API, static client, host page, same-origin guard
+    session/                           the single control WebSocket: signaling and input
+    media/                             WebRTC peer and the capture -> ffmpeg VP8 pipeline
+    capture/                           CaptureProbe client: window list, snapshots, frame stream
+    window/                            window model and the shared target selection
+    input/                             input commands, dispatcher and window-message injector
+    win32/                             Win32 calls (stubbed off Windows) and portable layout rules
+    origin/                            same-origin policy
+    tailbuf/                           bounded tail of subprocess diagnostics
+  test/                                all Go tests, one directory per package; testutil/ is shared
 window-capture/
   apps/CaptureProbe/                    window list, stream and snapshot CLI
   src/WindowCapture.Native/            WGC capture library
 scripts/                               build, run and runner setup tools
 ```
 
-`CaptureProbe` is a runtime application, so it now lives under `apps/`. `Models.cs` contains the capture models. Windows input implementations use `_windows.go` filenames; the dispatcher, HTTP handlers and media process supervision can be tested on Linux. Executable names remain stable; obsolete authentication APIs/settings and network-vendor settings have been removed.
+`CaptureProbe` is a runtime application, so it now lives under `apps/`. `Models.cs` contains the capture models. Go tests live under `control-server/test/`, one directory per package under test, and use only exported APIs. Operating-system calls are isolated in `internal/win32` (`*_windows.go`, with stubs for other platforms), so every Go package builds, vets and is tested on Linux; only the Win32 calls themselves need Windows. Executable names remain stable; obsolete authentication APIs/settings and network-vendor settings have been removed.
 
 The web UI is served by the Windows machine but executes in the phone browser. The control server handles signaling and input, while window capture provides Windows-specific frame capture. Authentication is managed externally by Cloudflare Access. The directories are named for these functions. The native library and executable names remain stable.
 
@@ -48,14 +62,14 @@ dotnet build window-capture/apps/CaptureProbe/CaptureProbe.csproj
 cd control-server
 $goExe = (Get-Command go).Source
 & $goExe version # Verify Go 1.27.1 before continuing.
-& $goExe build -o share-host.exe ./cmd/share-host
+& $goExe build -o bin/share-host.exe ./cmd/share-host
 & $goExe vet ./...
 & $goExe test ./...
 ```
 
 Go installation is explicit in CI, with pinned Node/.NET/Go setup and locked dependency restoration. Pull requests build and test on a GitHub-hosted Windows runner; branch and tag pushes use the retained self-hosted Windows runner and also publish/package the distribution. Only the separate tag release job has repository write permission. New updates cancel older runs for the same pull request. CI installs ffmpeg 8.1.1 through Chocolatey on the PR runner; the self-hosted runner must already provide ffmpeg on PATH. CI verifies `libvpx` encoder support before running the Go tests, without reusing cached test results. Dependency locks are checked in; build outputs are ignored.
 
-Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTargeting=true`, and cross-build the host with `GOOS=windows GOARCH=amd64`. Linux cannot execute WGC or Win32 input.
+Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTargeting=true`, and cross-build the host with `GOOS=windows GOARCH=amd64`. From `control-server`, `go vet ./...` and `go test ./...` also run on Linux (the encoder integration test needs ffmpeg with `libvpx` and is skipped without it). Linux cannot execute WGC or Win32 input.
 
 ## Run and configuration
 
@@ -141,9 +155,14 @@ Key implementation locations:
 | Committed text, IME and special keys | `web-ui/src/input/keyboard.js` |
 | Connection readiness, ICE and cleanup | `web-ui/src/core/webrtc.js` |
 | Window list and target selection APIs | `web-ui/src/core/api.js` |
-| Win32 coordinates, DPI, buttons and bounded calls | `control-server/internal/input/sendinput_windows.go`, `control-server/internal/input/target_windows.go` |
-| Capture helper resolution and validated frame reads | `control-server/internal/nativecapture/bridge.go` |
-| Capture/encoder ownership and pacing | `control-server/internal/webrtc/windowstream.go` |
+| Input validation, held keys/buttons and release | `control-server/internal/input/dispatcher.go` |
+| Window-message input, coordinates and bounded Win32 calls | `control-server/internal/input/message_injector.go`, `control-server/internal/win32/` |
+| Capture helper location and settings paths | `control-server/internal/config/paths.go` |
+| Capture helper commands and validated frame reads | `control-server/internal/capture/probe.go`, `stream.go`, `frame.go` |
+| Capture/encoder ownership and pacing | `control-server/internal/media/pipeline.go`, `framepump.go`, `encoder.go` |
+| Single-connection slot and WebSocket lifecycle | `control-server/internal/session/slot.go`, `hub.go` |
+| Target switching with input release | `control-server/internal/app/targets.go` |
+| HTTP API, static serving and origin guard | `control-server/internal/httpapi/` |
 | Native stream protocol | `window-capture/apps/CaptureProbe/Program.cs` |
 | WGC lifecycle and copying | `window-capture/src/WindowCapture.Native/WgcCaptureService.cs` |
 

@@ -17,6 +17,8 @@ const (
 	EnvStall = "RWC_FAKE_PROBE_STALL"
 	// EnvStreamFail makes the fake stream write to stderr and exit non-zero.
 	EnvStreamFail = "RWC_FAKE_PROBE_STREAM_FAIL"
+	// EnvCommandFail makes the fake one-shot commands write to stderr and exit non-zero.
+	EnvCommandFail = "RWC_FAKE_PROBE_COMMAND_FAIL"
 )
 
 // Fake probe output, so tests can assert on it.
@@ -70,6 +72,10 @@ func InstallFakeProbe(t *testing.T) string {
 }
 
 func runFakeProbe(args []string) int {
+	if os.Getenv(EnvCommandFail) == "1" && !slices.Contains(args, "--stream") {
+		fmt.Fprintln(os.Stderr, FakeStderr)
+		return 2
+	}
 	switch {
 	case slices.Contains(args, "--list"):
 		fmt.Print(FakeWindowJSON)

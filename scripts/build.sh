@@ -22,6 +22,6 @@ dotnet build "window-capture/apps/CaptureProbe/CaptureProbe.csproj" -p:EnableWin
 echo "3/3 Building control server..."
 cd "$SCRIPT_DIR/control-server"
 "$RWC_GO_PATH" version
-GOOS=windows GOARCH=amd64 "$RWC_GO_PATH" build -o share-host.exe ./cmd/share-host
+GOOS=windows GOARCH=amd64 "$RWC_GO_PATH" build -o bin/share-host.exe ./cmd/share-host
 
 echo "Done."

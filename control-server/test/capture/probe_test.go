@@ -52,6 +52,20 @@ func TestCapturePNGReturnsTheProbeOutput(t *testing.T) {
 	}
 }
 
+func TestOneShotCommandErrorsIncludeTheHelpersStderr(t *testing.T) {
+	t.Setenv(testutil.EnvCommandFail, "1")
+	probe := capture.NewProbe(testutil.InstallFakeProbe(t))
+
+	_, err := probe.ListWindows(context.Background())
+	if err == nil || !strings.Contains(err.Error(), testutil.FakeStderr) {
+		t.Fatalf("ListWindows error = %v, want one carrying %q", err, testutil.FakeStderr)
+	}
+	_, err = probe.CapturePNG(context.Background(), 1)
+	if err == nil || !strings.Contains(err.Error(), testutil.FakeStderr) {
+		t.Fatalf("CapturePNG error = %v, want one carrying %q", err, testutil.FakeStderr)
+	}
+}
+
 func TestStreamDeliversFramesAndClosesCleanly(t *testing.T) {
 	probe := capture.NewProbe(testutil.InstallFakeProbe(t))
 	stream, err := probe.OpenStream(context.Background(), 1)

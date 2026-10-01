@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"share-app-host/internal/window"
@@ -26,6 +27,8 @@ const (
 	// killDelay is how long a cancelled helper gets to exit before its
 	// pipes are forcibly closed.
 	killDelay = 2 * time.Second
+	// maxErrorDetail limits the helper's stderr quoted in an error.
+	maxErrorDetail = 1024
 )
 
 // Probe runs the CaptureProbe executable.
@@ -69,7 +72,22 @@ func (p *Probe) output(ctx context.Context, args ...string) ([]byte, error) {
 	defer cancel()
 	command := exec.CommandContext(ctx, p.path, args...)
 	command.WaitDelay = killDelay
-	return command.Output()
+	out, err := command.Output()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if tail := lastBytes(exitErr.Stderr, maxErrorDetail); len(tail) > 0 {
+			err = fmt.Errorf("%w: %s", err, tail)
+		}
+	}
+	return out, err
+}
+
+// lastBytes returns the trimmed last n bytes of b.
+func lastBytes(b []byte, n int) string {
+	if len(b) > n {
+		b = b[len(b)-n:]
+	}
+	return strings.TrimSpace(string(b))
 }
 
 func (p *Probe) check() error {
