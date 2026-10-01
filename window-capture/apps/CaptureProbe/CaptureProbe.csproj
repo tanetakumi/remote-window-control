@@ -7,11 +7,15 @@
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Windows SDK supplies projections; this application declares no custom WinRT types. -->
+    <CsWinRTGenerateProjection>false</CsWinRTGenerateProjection>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WindowCapture.Native\WindowCapture.Native.csproj" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.1" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
   </ItemGroup>
 
 </Project>

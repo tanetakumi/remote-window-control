@@ -1,9 +1,10 @@
 using System.Runtime.InteropServices;
+using Vortice.Direct3D11;
 using WinRT;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX.Direct3D11;
 
-namespace WindowCapture.Native;
+namespace CaptureProbe;
 
 [ComImport]
 [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
@@ -11,6 +12,7 @@ namespace WindowCapture.Native;
 internal interface IGraphicsCaptureItemInterop
 {
     IntPtr CreateForWindow(nint window, [In] ref Guid iid);
+
     IntPtr CreateForMonitor(nint monitor, [In] ref Guid iid);
 }
 
@@ -25,8 +27,24 @@ internal interface IDirect3DDxgiInterfaceAccess
 internal static class GraphicsCaptureInterop
 {
     private static readonly Guid GraphicsCaptureItemGuid = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
+    private static readonly object InitializationGate = new();
+    private static volatile bool _initialized;
 
-    [DllImport("D3D11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice", ExactSpelling = true)]
+    internal static void EnsureInitialized()
+    {
+        if (_initialized) return;
+
+        lock (InitializationGate)
+        {
+            if (!_initialized)
+            {
+                ComWrappersSupport.InitializeComWrappers();
+                _initialized = true;
+            }
+        }
+    }
+
+    [DllImport("d3d11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice", ExactSpelling = true)]
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
 
     internal static GraphicsCaptureItem CreateItemForWindow(nint hwnd)
@@ -44,21 +62,18 @@ internal static class GraphicsCaptureInterop
         }
     }
 
-    internal static IDirect3DDevice CreateWinRtDevice(IntPtr dxgiDevice)
+    internal static IDirect3DDevice CreateWinRtDevice(ID3D11Device d3dDevice)
     {
-        var hr = CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice, out var inspectable);
-        if (hr < 0 || inspectable == IntPtr.Zero)
-        {
-            Marshal.ThrowExceptionForHR(hr);
-        }
-
+        using var dxgiDevice = d3dDevice.QueryInterface<Vortice.DXGI.IDXGIDevice>();
+        var hr = CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice.NativePointer, out var devicePointer);
+        Marshal.ThrowExceptionForHR(hr);
         try
         {
-            return MarshalInspectable<IDirect3DDevice>.FromAbi(inspectable);
+            return MarshalInterface<IDirect3DDevice>.FromAbi(devicePointer);
         }
         finally
         {
-            Marshal.Release(inspectable);
+            Marshal.Release(devicePointer);
         }
     }
 }

@@ -22,14 +22,13 @@ control-server/                        Go host (module share-app-host)
     tailbuf/                           bounded tail of subprocess diagnostics
   test/                                all Go tests, one directory per package; testutil/ is shared
 window-capture/
-  apps/CaptureProbe/                    window list, stream and snapshot CLI
-  src/WindowCapture.Native/            WGC capture library
+  apps/CaptureProbe/                    single project: window list, WGC stream and PNG snapshots
 scripts/                               build, run and runner setup tools
 ```
 
-`CaptureProbe` is a runtime application, so it now lives under `apps/`. `Models.cs` contains the capture models. Go tests live under `control-server/test/`, one directory per package under test, and use only exported APIs. Operating-system calls are isolated in `internal/win32` (`*_windows.go`, with stubs for other platforms), so every Go package builds, vets and is tested on Linux; only the Win32 calls themselves need Windows. Executable names remain stable; obsolete authentication APIs/settings and network-vendor settings have been removed.
+`CaptureProbe` lives under `apps/` and contains five source files: CLI/output, window enumeration and its model, WGC capture and frame metadata, graphics interop/initialization, and PNG snapshots. Frame copies grow the caller's reusable buffer and copy pixels under one lock, keeping pixels and metadata consistent during resizing. Go tests live under `control-server/test/`, one directory per package under test, and use only exported APIs. Operating-system calls are isolated in `internal/win32` (`*_windows.go`, with stubs for other platforms), so every Go package builds, vets and is tested on Linux; only the Win32 calls themselves need Windows. Executable names remain stable; obsolete authentication APIs/settings and network-vendor settings have been removed.
 
-The web UI is served by the Windows machine but executes in the phone browser. The control server handles signaling and input, while window capture provides Windows-specific frame capture. Authentication is managed externally by Cloudflare Access. The directories are named for these functions. The native library and executable names remain stable.
+The web UI is served by the Windows machine but executes in the phone browser. The control server handles signaling and input, while window capture provides Windows-specific frame capture. Authentication is managed externally by Cloudflare Access. The directories are named for these functions. The executable names remain stable.
 
 ## Repository files
 
@@ -161,6 +160,6 @@ Key implementation locations:
 | Target switching with input release | `control-server/internal/app/targets.go` |
 | HTTP API, static serving and origin guard | `control-server/internal/httpapi/` |
 | Native stream protocol | `window-capture/apps/CaptureProbe/Program.cs` |
-| WGC lifecycle and copying | `window-capture/src/WindowCapture.Native/WgcCaptureService.cs` |
+| WGC lifecycle and copying | `window-capture/apps/CaptureProbe/WgcCaptureService.cs` |
 
 The control server resolves CaptureProbe from release `CaptureProbe/CaptureProbe.exe`, or development `window-capture/apps/CaptureProbe/bin/{Debug,Release}/net10.0-windows10.0.19041.0/win-x64/CaptureProbe.exe`. Verify Windows/iPhone compatibility, end-to-end performance gains and self-contained release readiness on the corresponding platforms before making those claims.

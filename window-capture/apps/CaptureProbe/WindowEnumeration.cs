@@ -2,16 +2,23 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace WindowCapture.Native;
+namespace CaptureProbe;
 
-public static class WindowEnumeration
+internal sealed record WindowInfo(
+    long Handle,
+    string Title,
+    int ProcessId,
+    string ProcessName,
+    string ClassName);
+
+internal static class WindowEnumeration
 {
     public static IReadOnlyList<WindowInfo> ListVisibleWindows()
     {
         var windows = new List<WindowInfo>();
         EnumWindows((hwnd, _) =>
         {
-            if (!IsWindowVisible(hwnd))
+            if (!IsWindowVisible(hwnd) || IsWindowCloaked(hwnd))
             {
                 return true;
             }
@@ -34,7 +41,8 @@ public static class WindowEnumeration
             string processName;
             try
             {
-                processName = Process.GetProcessById((int)processId).ProcessName;
+                using var process = Process.GetProcessById((int)processId);
+                processName = process.ProcessName;
             }
             catch
             {
@@ -56,6 +64,13 @@ public static class WindowEnumeration
         return windows;
     }
 
+    private const int DwmWindowCloaked = 14;
+
+    private static bool IsWindowCloaked(nint hwnd)
+    {
+        return DwmGetWindowAttribute(hwnd, DwmWindowCloaked, out var cloaked, sizeof(int)) == 0 && cloaked != 0;
+    }
+
     private delegate bool EnumWindowsProc(nint hwnd, nint lParam);
 
     [DllImport("user32.dll")]
@@ -75,4 +90,7 @@ public static class WindowEnumeration
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassNameW(nint hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 }

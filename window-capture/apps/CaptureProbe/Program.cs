@@ -1,8 +1,38 @@
 using System.Buffers.Binary;
 using System.Text.Json;
-using WindowCapture.Native;
+using CaptureProbe;
 
-if (args.Contains("--list", StringComparer.OrdinalIgnoreCase))
+string? mode = null;
+nint? hwnd = null;
+for (var i = 0; i < args.Length; i++)
+{
+    switch (args[i].ToLowerInvariant())
+    {
+        case "--list":
+        case "--stream":
+        case "--stdout-png":
+            if (mode is not null) return Usage();
+            mode = args[i].ToLowerInvariant();
+            break;
+        case "--hwnd":
+            if (hwnd is not null || ++i >= args.Length ||
+                !long.TryParse(args[i], out var handle) || handle == 0)
+            {
+                return Usage();
+            }
+            hwnd = (nint)handle;
+            break;
+        default:
+            return Usage();
+    }
+}
+
+if (mode is null || (mode == "--list" ? hwnd is not null : hwnd is null))
+{
+    return Usage();
+}
+
+if (mode == "--list")
 {
     Console.WriteLine(JsonSerializer.Serialize(
         WindowEnumeration.ListVisibleWindows().Select(window => new
@@ -14,116 +44,59 @@ if (args.Contains("--list", StringComparer.OrdinalIgnoreCase))
             class_name = window.ClassName,
         }),
         new JsonSerializerOptions
-    {
-        WriteIndented = true,
-    }));
-    return;
+        {
+            WriteIndented = true,
+        }));
+    return 0;
 }
 
-var hwnd = ReadRequired("--hwnd");
-if (args.Contains("--stream", StringComparer.OrdinalIgnoreCase))
+using var stdout = Console.OpenStandardOutput();
+if (mode == "--stream")
 {
-    StreamFrames((nint)long.Parse(hwnd));
-    return;
+    StreamFrames(hwnd!.Value, stdout);
+}
+else
+{
+    CaptureService.CaptureWindowToPng(hwnd!.Value, stdout);
+}
+return 0;
+
+static int Usage()
+{
+    Console.Error.WriteLine("usage: CaptureProbe --list | --hwnd <handle> --stream | --hwnd <handle> --stdout-png");
+    return 1;
 }
 
-if (args.Contains("--stdout-png", StringComparer.OrdinalIgnoreCase))
-{
-    var pngBytes = CaptureService.CaptureWindowToPngBytes((nint)long.Parse(hwnd));
-    using var stdout = Console.OpenStandardOutput();
-    stdout.Write(pngBytes, 0, pngBytes.Length);
-    return;
-}
-
-var outputPath = ReadRequired("--out");
-var result = await CaptureService.CaptureWindowToFileAsync((nint)long.Parse(hwnd), outputPath);
-
-Console.WriteLine(JsonSerializer.Serialize(new
-{
-    path = result.Path,
-    width = result.Width,
-    height = result.Height,
-    graphics_capture_supported = result.GraphicsCaptureSupported,
-}));
-
-static void StreamFrames(nint hwnd)
+static void StreamFrames(nint hwnd, Stream stdout)
 {
     using var capture = new WgcCaptureService();
     capture.StartCapture(hwnd);
 
-    using var stdout = Console.OpenStandardOutput();
     var header = new byte[24];
     var frameBuffer = Array.Empty<byte>();
     long lastSeenFrameId = 0;
 
     while (true)
     {
-        var frameId = capture.WaitForFrame(lastSeenFrameId, 1000);
-        if (frameId <= 0)
+        if (capture.WaitForFrame(lastSeenFrameId, 1000) <= 0)
         {
             continue;
         }
 
-        while (true)
+        if (capture.CopyLatestFrame(ref frameBuffer) is not { } frame)
         {
-            var probe = capture.CopyLatestFrame(IntPtr.Zero, 0);
-            if (probe.Status == CopyFrameStatus.NoFrame)
-            {
-                break;
-            }
-
-            if (probe.BytesWritten <= 0)
-            {
-                throw new InvalidOperationException("Capture stream reported empty frame.");
-            }
-
-            if (frameBuffer.Length < probe.BytesWritten)
-            {
-                frameBuffer = new byte[probe.BytesWritten];
-            }
-
-            FrameCopyResult copyResult;
-            unsafe
-            {
-                fixed (byte* destination = frameBuffer)
-                {
-                    copyResult = capture.CopyLatestFrame((IntPtr)destination, frameBuffer.Length);
-                }
-            }
-
-            if (copyResult.Status == CopyFrameStatus.BufferTooSmall)
-            {
-                frameBuffer = new byte[copyResult.BytesWritten];
-                continue;
-            }
-
-            if (copyResult.Status != CopyFrameStatus.Success)
-            {
-                break;
-            }
-
-            BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(0, 4), (uint)copyResult.BytesWritten);
-            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(4, 4), copyResult.Width);
-            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8, 4), copyResult.Height);
-            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12, 4), copyResult.Stride);
-            BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(16, 8), copyResult.FrameId);
-
-            lastSeenFrameId = copyResult.FrameId;
-            stdout.Write(header, 0, header.Length);
-            stdout.Write(frameBuffer, 0, copyResult.BytesWritten);
-            stdout.Flush();
-            break;
+            continue;
         }
-    }
-}
 
-string ReadRequired(string key)
-{
-    var index = Array.IndexOf(args, key);
-    if (index < 0 || index + 1 >= args.Length)
-    {
-        throw new InvalidOperationException($"Missing argument {key}");
-    }
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(0, 4), (uint)frame.BytesWritten);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(4, 4), frame.Width);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8, 4), frame.Height);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12, 4), frame.Stride);
+        BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(16, 8), frame.FrameId);
 
-    return args[index + 1];
+        lastSeenFrameId = frame.FrameId;
+        stdout.Write(header);
+        stdout.Write(frameBuffer.AsSpan(0, frame.BytesWritten));
+        stdout.Flush();
+    }
 }

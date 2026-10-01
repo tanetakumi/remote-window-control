@@ -3,9 +3,26 @@
   "dependencies": {
     "net10.0-windows10.0.19041": {
       "Microsoft.Windows.CsWinRT": {
-        "type": "Transitive",
+        "type": "Direct",
+        "requested": "[2.3.1, )",
         "resolved": "2.3.1",
         "contentHash": "ojoYrj8m8mAx6LVxofQXgfvsReDTv2LQFeDgXt5Lw99r5fv7dCR19ybd1JN0OueaWvL+BNqv0E7zZCgqptP9zA=="
+      },
+      "SixLabors.ImageSharp": {
+        "type": "Direct",
+        "requested": "[3.1.12, )",
+        "resolved": "3.1.12",
+        "contentHash": "iAg6zifihXEFS/t7fiHhZBGAdCp3FavsF4i2ZIDp0JfeYeDVzvmlbY1CNhhIKimaIzrzSi5M/NBFcWvZT2rB/A=="
+      },
+      "Vortice.Direct3D11": {
+        "type": "Direct",
+        "requested": "[3.8.3, )",
+        "resolved": "3.8.3",
+        "contentHash": "JgFUswu2mgrSwcd0KRF2AnfeE5VbMEgcicmxPD1g2yXyomPIHbnX3wldBNHPOzzD0URC1WJ/pO1ymfi3imZwvg==",
+        "dependencies": {
+          "SharpGen.Runtime": "2.4.2-beta",
+          "Vortice.DXGI": "3.8.3"
+        }
       },
       "SharpGen.Runtime": {
         "type": "Transitive",
@@ -18,20 +35,6 @@
         "contentHash": "9lxDFMiepqo3lJQzMSjECCIONeCc2f3Drokgj6HtrTLZcJSftNgcLbD6/iXYj2iphkwgrZb1oLsDOZxoFZkawQ==",
         "dependencies": {
           "SharpGen.Runtime": "2.4.2-beta"
-        }
-      },
-      "SixLabors.ImageSharp": {
-        "type": "Transitive",
-        "resolved": "3.1.12",
-        "contentHash": "iAg6zifihXEFS/t7fiHhZBGAdCp3FavsF4i2ZIDp0JfeYeDVzvmlbY1CNhhIKimaIzrzSi5M/NBFcWvZT2rB/A=="
-      },
-      "Vortice.Direct3D11": {
-        "type": "Transitive",
-        "resolved": "3.8.3",
-        "contentHash": "JgFUswu2mgrSwcd0KRF2AnfeE5VbMEgcicmxPD1g2yXyomPIHbnX3wldBNHPOzzD0URC1WJ/pO1ymfi3imZwvg==",
-        "dependencies": {
-          "SharpGen.Runtime": "2.4.2-beta",
-          "Vortice.DXGI": "3.8.3"
         }
       },
       "Vortice.DirectX": {
@@ -57,14 +60,6 @@
         "type": "Transitive",
         "resolved": "2.1.0",
         "contentHash": "KK+SjNSuKdP+zbavekubi+vaeb1Jo4k87ZF6CMkVWjr6RjJwc8peVtmgzXXDIMy4ZC3ZISyk3llY3q65ISOkBQ=="
-      },
-      "windowcapture.native": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Windows.CsWinRT": "[2.3.1, )",
-          "SixLabors.ImageSharp": "[3.1.12, )",
-          "Vortice.Direct3D11": "[3.8.3, )"
-        }
       }
     },
     "net10.0-windows10.0.19041/win-x64": {}

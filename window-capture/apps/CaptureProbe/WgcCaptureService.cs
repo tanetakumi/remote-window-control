@@ -7,13 +7,10 @@ using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
 
-namespace WindowCapture.Native;
+namespace CaptureProbe;
 
-public sealed class WgcCaptureService : IDisposable
+internal sealed class WgcCaptureService : IDisposable
 {
-    private static readonly Guid GraphicsCaptureItemIid = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
-    private static readonly Guid GraphicsCaptureItemInteropIid = new("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356");
-
     private ID3D11Device? _d3dDevice;
     private IDirect3DDevice? _winrtDevice;
     private GraphicsCaptureItem? _captureItem;
@@ -26,22 +23,22 @@ public sealed class WgcCaptureService : IDisposable
     private byte[]? _frameBuffer;
     private int _captureWidth;
     private int _captureHeight;
-    private int _frameWidth;
-    private int _frameHeight;
-    private int _frameStride;
-    private int _frameBytesWritten;
-    private long _frameId;
+    private FrameInfo _frame;
     private Exception? _fatalError;
     private volatile bool _disposed;
 
-    public static bool IsSupported() => GraphicsCaptureSession.IsSupported();
+    public static bool IsSupported()
+    {
+        GraphicsCaptureInterop.EnsureInitialized();
+        return GraphicsCaptureSession.IsSupported();
+    }
 
     public void StartCapture(IntPtr hwnd)
     {
         ThrowIfDisposed();
-        WinRtInitialization.EnsureInitialized();
+        GraphicsCaptureInterop.EnsureInitialized();
         InitializeDevices();
-        _captureItem = CreateItemForWindow(hwnd);
+        _captureItem = GraphicsCaptureInterop.CreateItemForWindow(hwnd);
         _captureItem.Closed += OnCaptureClosed;
         _captureWidth = _captureItem.Size.Width;
         _captureHeight = _captureItem.Size.Height;
@@ -63,13 +60,13 @@ public sealed class WgcCaptureService : IDisposable
 
         lock (_frameLock)
         {
-            if (_frameId > lastSeenFrameId)
+            if (_frame.FrameId > lastSeenFrameId)
             {
-                return _frameId;
+                return _frame.FrameId;
             }
         }
 
-        var signaled = _frameEvent.WaitOne(timeoutMs < 0 ? Timeout.Infinite : timeoutMs);
+        var signaled = _frameEvent.WaitOne(timeoutMs);
         ThrowIfFaulted();
         if (!signaled)
         {
@@ -78,41 +75,32 @@ public sealed class WgcCaptureService : IDisposable
 
         lock (_frameLock)
         {
-            return _frameId > lastSeenFrameId ? _frameId : 0;
+            return _frame.FrameId > lastSeenFrameId ? _frame.FrameId : 0;
         }
     }
 
-    public FrameCopyResult CopyLatestFrame(IntPtr destination, int destinationLength)
+    // Grow and copy under the same lock so resizing cannot invalidate a size probe.
+    // The caller owns the returned pixels and can reuse its buffer on the next call.
+    public FrameInfo? CopyLatestFrame(ref byte[] buffer)
     {
         ThrowIfDisposed();
         ThrowIfFaulted();
 
         lock (_frameLock)
         {
-            if (_frameId == 0 || _frameBuffer is null)
+            ThrowIfDisposed();
+            if (_frame.FrameId == 0 || _frameBuffer is null)
             {
-                return FrameCopyResult.NoFrame;
+                return null;
             }
 
-            if (destination == IntPtr.Zero || destinationLength < _frameBytesWritten)
+            if (buffer.Length < _frame.BytesWritten)
             {
-                return new FrameCopyResult(
-                    CopyFrameStatus.BufferTooSmall,
-                    _frameWidth,
-                    _frameHeight,
-                    _frameStride,
-                    _frameBytesWritten,
-                    _frameId);
+                buffer = new byte[_frame.BytesWritten];
             }
 
-            Marshal.Copy(_frameBuffer, 0, destination, _frameBytesWritten);
-            return new FrameCopyResult(
-                CopyFrameStatus.Success,
-                _frameWidth,
-                _frameHeight,
-                _frameStride,
-                _frameBytesWritten,
-                _frameId);
+            _frameBuffer.AsSpan(0, _frame.BytesWritten).CopyTo(buffer);
+            return _frame;
         }
     }
 
@@ -198,7 +186,7 @@ public sealed class WgcCaptureService : IDisposable
         try
         {
             _d3dDevice = new ID3D11Device(devicePointer);
-            _winrtDevice = CreateWinRtDevice(_d3dDevice);
+            _winrtDevice = GraphicsCaptureInterop.CreateWinRtDevice(_d3dDevice);
         }
         finally
         {
@@ -326,35 +314,39 @@ public sealed class WgcCaptureService : IDisposable
             return;
         }
 
-        var contiguousStride = safeWidth * 4;
-        var requiredSize = contiguousStride * height;
+        var contiguousStride = checked(safeWidth * 4);
+        var requiredSize = checked(contiguousStride * height);
 
         lock (_frameLock)
         {
             if (_frameBuffer is null || _frameBuffer.Length < requiredSize)
             {
+                var buffer = ArrayPool<byte>.Shared.Rent(requiredSize);
                 if (_frameBuffer is not null)
                 {
                     ArrayPool<byte>.Shared.Return(_frameBuffer);
                 }
 
-                _frameBuffer = ArrayPool<byte>.Shared.Rent(requiredSize);
+                _frameBuffer = buffer;
             }
 
-            for (var y = 0; y < height; y++)
+            if (sourcePitch == contiguousStride)
             {
-                Marshal.Copy(
-                    IntPtr.Add(pixels, y * sourcePitch),
-                    _frameBuffer,
-                    y * contiguousStride,
-                    contiguousStride);
+                Marshal.Copy(pixels, _frameBuffer, 0, requiredSize);
+            }
+            else
+            {
+                for (var y = 0; y < height; y++)
+                {
+                    Marshal.Copy(
+                        IntPtr.Add(pixels, checked(y * sourcePitch)),
+                        _frameBuffer,
+                        y * contiguousStride,
+                        contiguousStride);
+                }
             }
 
-            _frameWidth = safeWidth;
-            _frameHeight = height;
-            _frameStride = contiguousStride;
-            _frameBytesWritten = requiredSize;
-            _frameId++;
+            _frame = new FrameInfo(safeWidth, height, _frame.FrameId + 1);
         }
 
         _frameEvent.Set();
@@ -379,81 +371,6 @@ public sealed class WgcCaptureService : IDisposable
         }
     }
 
-    private static GraphicsCaptureItem CreateItemForWindow(IntPtr hwnd)
-    {
-        var factoryPointer = IntPtr.Zero;
-        var itemPointer = IntPtr.Zero;
-        var classIdHandle = IntPtr.Zero;
-
-        try
-        {
-            const string classId = "Windows.Graphics.Capture.GraphicsCaptureItem";
-            Marshal.ThrowExceptionForHR(WindowsCreateString(classId, classId.Length, out classIdHandle));
-            var interopIid = GraphicsCaptureItemInteropIid;
-            Marshal.ThrowExceptionForHR(RoGetActivationFactory(classIdHandle, ref interopIid, out factoryPointer));
-
-            var interop = (IGraphicsCaptureItemInterop)Marshal.GetObjectForIUnknown(factoryPointer);
-            var itemIid = GraphicsCaptureItemIid;
-            Marshal.ThrowExceptionForHR(interop.CreateForWindow(hwnd, ref itemIid, out itemPointer));
-
-            return MarshalInterface<GraphicsCaptureItem>.FromAbi(itemPointer);
-        }
-        finally
-        {
-            if (itemPointer != IntPtr.Zero)
-            {
-                Marshal.Release(itemPointer);
-            }
-
-            if (factoryPointer != IntPtr.Zero)
-            {
-                Marshal.Release(factoryPointer);
-            }
-
-            if (classIdHandle != IntPtr.Zero)
-            {
-                WindowsDeleteString(classIdHandle);
-            }
-        }
-    }
-
-    private static IDirect3DDevice CreateWinRtDevice(ID3D11Device d3dDevice)
-    {
-        using var dxgiDevice = d3dDevice.QueryInterface<Vortice.DXGI.IDXGIDevice>();
-        var hr = CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice.NativePointer, out var devicePointer);
-        if (hr != 0)
-        {
-            Marshal.ThrowExceptionForHR((int)hr);
-        }
-
-        try
-        {
-            return MarshalInterface<IDirect3DDevice>.FromAbi(devicePointer);
-        }
-        finally
-        {
-            if (devicePointer != IntPtr.Zero)
-            {
-                Marshal.Release(devicePointer);
-            }
-        }
-    }
-
-    [DllImport("combase.dll", ExactSpelling = true)]
-    private static extern int RoGetActivationFactory(
-        IntPtr activatableClassId,
-        [In] ref Guid iid,
-        out IntPtr factory);
-
-    [DllImport("combase.dll", ExactSpelling = true)]
-    private static extern int WindowsCreateString(
-        [MarshalAs(UnmanagedType.LPWStr)] string sourceString,
-        int length,
-        out IntPtr hstring);
-
-    [DllImport("combase.dll", ExactSpelling = true)]
-    private static extern int WindowsDeleteString(IntPtr hstring);
-
     [DllImport("d3d11.dll", EntryPoint = "D3D11CreateDevice", ExactSpelling = true)]
     private static extern int D3D11CreateDeviceNative(
         IntPtr adapter,
@@ -467,42 +384,11 @@ public sealed class WgcCaptureService : IDisposable
         out FeatureLevel featureLevel,
         out IntPtr immediateContext);
 
-    [DllImport("d3d11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice", ExactSpelling = true)]
-    private static extern uint CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
-
-    [ComImport]
-    [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IGraphicsCaptureItemInterop
-    {
-        int CreateForWindow([In] IntPtr window, [In] ref Guid iid, out IntPtr result);
-    }
-
-    [ComImport]
-    [Guid("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IDirect3DDxgiInterfaceAccess
-    {
-        IntPtr GetInterface([In] ref Guid iid);
-    }
-
     private const uint D3D11SdkVersion = 7;
 }
 
-public enum CopyFrameStatus
+internal readonly record struct FrameInfo(int Width, int Height, long FrameId)
 {
-    NoFrame = 0,
-    Success = 1,
-    BufferTooSmall = 2
-}
-
-public readonly record struct FrameCopyResult(
-    CopyFrameStatus Status,
-    int Width,
-    int Height,
-    int Stride,
-    int BytesWritten,
-    long FrameId)
-{
-    public static FrameCopyResult NoFrame => new(CopyFrameStatus.NoFrame, 0, 0, 0, 0, 0);
+    public int Stride => checked(Width * 4);
+    public int BytesWritten => checked(Stride * Height);
 }
