@@ -11,7 +11,6 @@ window-capture/
   apps/CaptureProbe/                    window list, stream and snapshot CLI
   src/WindowCapture.Native/            WGC capture library
 scripts/                               build, run and runner setup tools
-docs/validation.md                     verification results and Windows/device checks
 ```
 
 `CaptureProbe` is a runtime application, so it now lives under `apps/`. `Models.cs` contains the capture models. Windows input implementations use `_windows.go` filenames; the dispatcher, HTTP handlers and media process supervision can be tested on Linux. Executable names remain stable; obsolete authentication APIs/settings and network-vendor settings have been removed.
@@ -24,7 +23,6 @@ The web UI is served by the Windows machine but executes in the phone browser. T
 - `.env.example` documents executable configuration; `LICENSE` contains the project license.
 - `.node-version` and `global.json` pin SDKs and are consumed by build scripts/CI and .NET respectively; Go is pinned in `control-server/go.mod`.
 - `.github/renovate.json` retains dependency update configuration; workflow definitions also live under `.github/`.
-- `docs/roadmap.md` records implementation status and remaining work; `docs/validation.md` records verification evidence.
 
 ## Build on Windows
 
@@ -57,7 +55,7 @@ $goExe = (Get-Command go).Source
 
 Go installation is explicit in CI, with pinned Node/.NET/Go setup and locked dependency restoration. Pull requests build and test on a GitHub-hosted Windows runner; branch and tag pushes use the retained self-hosted Windows runner and also publish/package the distribution. Only the separate tag release job has repository write permission. New updates cancel older runs for the same pull request. CI installs ffmpeg 8.1.1 through Chocolatey on the PR runner; the self-hosted runner must already provide ffmpeg on PATH. CI verifies `libvpx` encoder support before running the Go tests, without reusing cached test results. Dependency locks are checked in; build outputs are ignored.
 
-Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTargeting=true`, and cross-build the host with `GOOS=windows GOARCH=amd64`. Linux cannot execute WGC or Win32 input. See [validation](docs/validation.md) for the tested commands and their limits.
+Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTargeting=true`, and cross-build the host with `GOOS=windows GOARCH=amd64`. Linux cannot execute WGC or Win32 input.
 
 ## Run and configuration
 
@@ -117,9 +115,9 @@ CLI snapshots retain local caller-selected paths. Streaming uses a single long-l
 
 Branch pushes produce the `share-app-windows` Actions artifact containing `share-app-<run-number>-<commit-sha>.zip`. Tag pushes matching `v*` produce `share-app-<tag>.zip`, upload it as an Actions artifact for transfer, and attach it to the GitHub Release after the build and tests pass. Pull requests run build/test checks without publishing or uploading a distribution.
 
-The ZIP contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env.example`, README.md, LICENSE and `docs/`. It remains a **development distribution**: .NET 10 runtime and ffmpeg are external requirements. The host also resolves `ffmpeg.exe` beside its executable when supplied.
+The ZIP contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env.example`, README.md and LICENSE. It remains a **development distribution**: .NET 10 runtime and ffmpeg are external requirements. The host also resolves `ffmpeg.exe` beside its executable when supplied.
 
-Self-contained publishing, a pinned ffmpeg bundle with checksum/notices, and a clean Windows 11 installation test are pending after Windows performance and device validation. See [remaining roadmap](docs/roadmap.md) for the remaining sequence.
+Self-contained publishing, a pinned ffmpeg bundle with checksum/notices, and a clean Windows 11 installation test remain pending after Windows performance and device validation.
 
 WGC can stop updating a minimized window or a window on an inactive virtual desktop. Target switching cancels the old helper independently of frame arrival. Actual WGC capture, mixed-DPI click alignment, application-specific background input and iPhone behavior still require an interactive Windows/device test.
 
@@ -149,4 +147,4 @@ Key implementation locations:
 | Native stream protocol | `window-capture/apps/CaptureProbe/Program.cs` |
 | WGC lifecycle and copying | `window-capture/src/WindowCapture.Native/WgcCaptureService.cs` |
 
-The control server resolves CaptureProbe from release `CaptureProbe/CaptureProbe.exe`, or development `window-capture/apps/CaptureProbe/bin/{Debug,Release}/net10.0-windows10.0.19041.0/win-x64/CaptureProbe.exe`. Do not claim Windows/iPhone compatibility, end-to-end performance gains or self-contained release readiness until the corresponding checks in [validation](docs/validation.md) and [roadmap](docs/roadmap.md) have passed.
+The control server resolves CaptureProbe from release `CaptureProbe/CaptureProbe.exe`, or development `window-capture/apps/CaptureProbe/bin/{Debug,Release}/net10.0-windows10.0.19041.0/win-x64/CaptureProbe.exe`. Verify Windows/iPhone compatibility, end-to-end performance gains and self-contained release readiness on the corresponding platforms before making those claims.
