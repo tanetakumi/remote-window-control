@@ -3,69 +3,141 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#090d16" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>Share App Remote</title>
   </head>
   <body>
+    <div class="ambient-glow ambient-glow-1" aria-hidden="true"></div>
+    <div class="ambient-glow ambient-glow-2" aria-hidden="true"></div>
+
     <div id="app">
-      <div id="select-screen">
-        <h1>Select an application</h1>
-        <p id="select-status">Loading windows…</p>
-        <button id="refresh-button" type="button">Refresh windows</button>
-        <div id="window-list"></div>
-      </div>
+      <!-- Window Selection Screen -->
+      <main id="select-screen">
+        <div class="select-container">
+          <header class="select-header">
+            <div class="brand-row">
+              <div class="brand-badge">
+                <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="20" height="14" x="2" y="3" rx="2"></rect>
+                  <line x1="8" x2="16" y1="21" y2="21"></line>
+                  <line x1="12" x2="12" y1="17" y2="21"></line>
+                </svg>
+              </div>
+              <div class="brand-meta">
+                <span class="brand-tag">REMOTE CONTROL</span>
+                <h1 class="brand-title">Select an Application</h1>
+              </div>
+            </div>
+            <p class="brand-desc">Choose an active window to stream and interact with via WebRTC.</p>
+          </header>
+
+          <section class="select-toolbar">
+            <div class="search-box">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                id="window-search"
+                type="search"
+                placeholder="Search window or process…"
+                aria-label="Filter windows by title or process name"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button id="search-clear" type="button" class="search-clear-btn" aria-label="Clear search" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div class="toolbar-actions">
+              <span id="window-count-badge" class="count-badge" aria-live="polite">0 windows</span>
+              <button id="refresh-button" type="button" aria-label="Refresh window list">
+                <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                  <path d="M21 3v5h-5"></path>
+                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                  <path d="M8 16H3v5"></path>
+                </svg>
+                <span>Refresh</span>
+              </button>
+            </div>
+          </section>
+
+          <p id="select-status" role="status" aria-live="polite"></p>
+
+          <div id="window-list" role="region" aria-label="Available windows"></div>
+        </div>
+      </main>
+
+      <!-- Remote Control Screen -->
       <div id="remote-screen" hidden>
-      <div id="top-bar">
-        <div id="status-pill">Connecting…</div>
-        <div id="bitrate-pill" hidden aria-label="Video bitrate"></div>
-        <div id="top-bar-actions">
-          <button id="windows-button" type="button" aria-label="Select window">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>
-          </button>
-          <button id="fullscreen-button" type="button" aria-label="Fullscreen">
+        <header id="top-bar">
+          <div class="status-group">
+            <div id="status-pill" role="status" aria-live="polite">Connecting…</div>
+            <div id="bitrate-pill" hidden aria-label="Video bitrate"></div>
+          </div>
+          <div id="top-bar-actions">
+            <button id="windows-button" type="button" aria-label="Switch window" title="Switch window">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>
+            </button>
+            <button id="fullscreen-button" type="button" aria-label="Toggle fullscreen" title="Fullscreen">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 3H4a1 1 0 0 0-1 1v4M16 3h4a1 1 0 0 1 1 1v4M21 16v4a1 1 0 0 1-1 1h-4M3 16v4a1 1 0 0 0 1 1h4"/>
+              </svg>
+            </button>
+            <button id="keyboard-button" type="button" aria-label="Toggle keyboard" title="Keyboard">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 14.5zM7 9H6m4 0H9m4 0h-1m4 0h-1m-8 3H6m4 0H9m4 0h-1m4 0h-1m-8 3h10"/>
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <div id="video-stage">
+          <div id="video-waiting" role="status">
+            <div class="radar-pulse"></div>
+            <p class="waiting-text">Waiting for host video stream…</p>
+          </div>
+          <video
+            id="remote-video"
+            autoplay
+            playsinline
+            muted
+            disablepictureinpicture
+          ></video>
+        </div>
+
+        <div id="input-dock">
+          <div class="input-wrapper">
+            <textarea
+              id="hidden-text-input"
+              inputmode="text"
+              enterkeyhint="done"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              placeholder="Type into remote window…"
+            ></textarea>
+          </div>
+          <button id="backspace-button" type="button" aria-label="Backspace" title="Backspace">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M8 3H4a1 1 0 0 0-1 1v4M16 3h4a1 1 0 0 1 1 1v4M21 16v4a1 1 0 0 1-1 1h-4M3 16v4a1 1 0 0 0 1 1h4"/>
+              <path d="M10 6h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-9L3 12zm4 3-4 6m0-6 4 6"/>
             </svg>
           </button>
-          <button id="keyboard-button" type="button" aria-label="Open keyboard">
+          <button id="enter-button" type="button" aria-label="Enter" title="Enter">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 14.5zM7 9H6m4 0H9m4 0h-1m4 0h-1m-8 3H6m4 0H9m4 0h-1m4 0h-1m-8 3h10"/>
+              <path d="M4 7v6a3 3 0 0 0 3 3h13m0 0-4-4m4 4-4 4"/>
             </svg>
           </button>
         </div>
-      </div>
-      <div id="video-stage">
-        <div id="video-waiting" role="status">Waiting for host video…</div>
-        <video
-          id="remote-video"
-          autoplay
-          playsinline
-          muted
-          disablepictureinpicture
-        ></video>
-      </div>
-      <div id="input-dock">
-        <textarea
-          id="hidden-text-input"
-          inputmode="text"
-          enterkeyhint="done"
-          autocomplete="off"
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck="false"
-          placeholder="Type text"
-        ></textarea>
-        <button id="backspace-button" type="button" aria-label="Backspace">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M10 6h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-9L3 12zm4 3-4 6m0-6 4 6"/>
-          </svg>
-        </button>
-        <button id="enter-button" type="button" aria-label="Enter">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 7v6a3 3 0 0 0 3 3h13m0 0-4-4m4 4-4 4"/>
-          </svg>
-        </button>
-      </div>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>
