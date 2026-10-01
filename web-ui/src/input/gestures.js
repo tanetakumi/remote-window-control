@@ -1,40 +1,13 @@
 import { createListenerTracker } from "../lib/events.js";
+import { normalizeClientPoint } from "./coordinates.js";
 
 const LONG_PRESS_MS = 450;
 const TAP_SLOP_PX = 12;
 const SCROLL_SENSITIVITY = 0.8;
 
-function getVideoContentRect(element) {
-  const rect = element.getBoundingClientRect();
-  const sourceWidth = element.videoWidth;
-  const sourceHeight = element.videoHeight;
-
-  if (!sourceWidth || !sourceHeight || !rect.width || !rect.height) {
-    return rect;
-  }
-
-  const scale = Math.min(rect.width / sourceWidth, rect.height / sourceHeight);
-  const contentWidth = sourceWidth * scale;
-  const contentHeight = sourceHeight * scale;
-
-  return {
-    left: rect.left + (rect.width - contentWidth) / 2,
-    top: rect.top + (rect.height - contentHeight) / 2,
-    width: contentWidth,
-    height: contentHeight,
-  };
-}
-
 function normalizePoint(event, element) {
-  const rect = getVideoContentRect(element);
   const touch = event.touches[0] ?? event.changedTouches[0];
-  const x = (touch.clientX - rect.left) / rect.width;
-  const y = (touch.clientY - rect.top) / rect.height;
-
-  return {
-    x: Math.min(1, Math.max(0, x)),
-    y: Math.min(1, Math.max(0, y)),
-  };
+  return normalizeClientPoint(touch, element) ?? { x: 0.5, y: 0.5 };
 }
 
 export function attachGestureControls(videoElement, sendControl, onStatus) {

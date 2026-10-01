@@ -3,6 +3,7 @@ import "./styles.css";
 import { fetchWindows, setTargetWindow } from "./core/api.js";
 import { createRemoteConnection } from "./core/webrtc.js";
 import { attachGestureControls } from "./input/gestures.js";
+import { attachMouseControls } from "./input/mouse.js";
 import { attachKeyboardBridge } from "./input/keyboard.js";
 import { attachViewportSync } from "./input/viewport.js";
 import { createListenerTracker } from "./lib/events.js";
@@ -285,6 +286,7 @@ async function startRemoteControl() {
   });
   waitingElement.hidden = true;
   const releaseGestures = attachGestureControls(videoElement, remote.sendControl, setStatus);
+  const releaseMouse = attachMouseControls(videoElement, remote.sendControl);
   const keyboard = attachKeyboardBridge(
     {
       buttonElement: keyboardButton,
@@ -302,6 +304,7 @@ async function startRemoteControl() {
   const releaseTopBar = attachTopBarControls(viewport.triggerFullscreenSync);
   cleanupRemote = () => {
     releaseGestures();
+    releaseMouse();
     keyboard.cleanup();
     viewport.cleanup();
     releaseTopBar();

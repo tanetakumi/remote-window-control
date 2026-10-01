@@ -23,7 +23,6 @@ control-server/                        Go host (module share-app-host)
   test/                                all Go tests, one directory per package; testutil/ is shared
 window-capture/
   apps/CaptureProbe/                    single project: window list, WGC stream and PNG snapshots
-scripts/                               build, run and runner setup tools
 ```
 
 `CaptureProbe` lives under `apps/` and contains five source files: CLI/output, window enumeration and its model, WGC capture and frame metadata, graphics interop/initialization, and PNG snapshots. Frame copies grow the caller's reusable buffer and copy pixels under one lock, keeping pixels and metadata consistent during resizing. Go tests live under `control-server/test/`, one directory per package under test, and use only exported APIs. Operating-system calls are isolated in `internal/win32` (`*_windows.go`, with stubs for other platforms), so every Go package builds, vets and is tested on Linux; only the Win32 calls themselves need Windows. Executable names remain stable; obsolete authentication APIs/settings and network-vendor settings have been removed.
@@ -34,30 +33,26 @@ The web UI is served by the Windows machine but executes in the phone browser. T
 
 - `.gitignore` excludes generated artifacts, local secrets, certificates and snapshots.
 - `.env.example` documents executable configuration; `LICENSE` contains the project license.
-- `.node-version` and `global.json` pin SDKs and are consumed by build scripts/CI and .NET respectively; Go is pinned in `control-server/go.mod`.
+- `.github/distribution/はじめにお読みください.txt` is copied into the root of the Windows distribution ZIP.
+- `.node-version` and `global.json` pin SDKs and are consumed by CI and .NET respectively; Go is pinned in `control-server/go.mod`.
 - `.github/renovate.json` retains dependency update configuration; workflow definitions also live under `.github/`.
 
-## Build on Windows
+## Build
+
+GitHub Actions builds and tests the application and prepares the Windows distribution. Use the Actions artifact or GitHub Release ZIP for installation; local build and runner setup scripts are not needed.
 
 Install the versions pinned in `.node-version`, `global.json` and `control-server/go.mod`: Node 24.21.0, .NET SDK 10.0.401 and Go 1.27.1. Streaming currently also requires an ffmpeg build with `libvpx` on PATH, and the .NET 10 runtime for the framework-dependent helper.
 
-From PowerShell in the repository root:
-
-```powershell
-./scripts/build.ps1 -Check
-# To select a specific Go installation:
-./scripts/build.ps1 -GoExe 'C:\Program Files\Go\bin\go.exe' -Check
-```
-
-The required build order is web UI → window capture → control server. Manual equivalents:
+For local development on Windows, run the following commands from PowerShell in the repository root. The required build order is web UI → window capture → control server:
 
 ```powershell
 cd web-ui
-npm install
+npm ci
 npm run build
 npm test
 cd ..
-dotnet build window-capture/apps/CaptureProbe/CaptureProbe.csproj
+dotnet restore window-capture/apps/CaptureProbe/CaptureProbe.csproj --locked-mode
+dotnet build window-capture/apps/CaptureProbe/CaptureProbe.csproj --no-restore
 cd control-server
 $goExe = (Get-Command go).Source
 & $goExe version # Verify Go 1.27.1 before continuing.
@@ -72,13 +67,13 @@ Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTarge
 
 ## Run and configuration
 
-When running from source, optionally copy `.env.example` to `.env` in the repository root to override configuration. Run:
+For local development after building from source, optionally copy `.env.example` to `.env` in the repository root to override configuration. Run from the repository root:
 
 ```powershell
-./scripts/run.ps1
+.\control-server\bin\share-host.exe
 ```
 
-When using an extracted distribution ZIP, install the .NET 10 x64 runtime and provide ffmpeg with `libvpx` on PATH (or put `ffmpeg.exe` beside `share-host.exe`). Optionally copy `.env.example` to `.env` beside `share-host.exe`, then run from the extracted folder:
+When using an extracted distribution ZIP, install the .NET 10 x64 runtime and provide FFmpeg with the `libvpx` encoder on `PATH` (or place `ffmpeg.exe` beside `share-host.exe`). The ZIP includes a `.env` beside `share-host.exe`, preconfigured with `SHARE_APP_ADDR=127.0.0.1:8443`; edit it if you need a different listen address, then run from the extracted folder. See `はじめにお読みください.txt` in the ZIP for Windows setup and LAN access:
 
 ```powershell
 .\share-host.exe
@@ -104,7 +99,7 @@ Client URLs follow the page origin, including HTTPS/WSS when HTTPS is supplied e
 
 ## Input and snapshots
 
-Retained controls include tap, long press/right-button drag, one- and two-finger scrolling, text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where the browser supports it and bitrate display. Scroll targets the last tap. Composing text stays local until committed. Held input is released on cancellation, disconnect and target changes. Win32 text and scroll calls have bounded waits.
+Retained controls include tap, long press/right-button drag, one- and two-finger scrolling, mouse hover, left/right click and drag, mouse wheel scrolling, text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where the browser supports it and bitrate display. Touch scrolling targets the last tap; mouse wheel scrolling targets the mouse position. Mouse interactions start within the displayed image, ignoring letterbox margins, and drags stay captured when the pointer leaves the image. Composing text stays local until committed. Held input is released on cancellation, disconnect and target changes; mouse buttons are also released when the browser window loses focus. Win32 text and scroll calls have bounded waits.
 
 Call the local APIs directly for debugging:
 
@@ -123,18 +118,18 @@ Streaming uses a single long-lived capture process and encoder, never one proces
 
 ## Current distribution status
 
-Pushes to `master` or `main` and manual runs produce the `share-app-windows` Actions artifact containing `share-app-<run-number>-<commit-sha>.zip`. Tag pushes matching `v*` produce `share-app-<tag>.zip`, upload it as an Actions artifact for transfer, and attach it to the GitHub Release after the build and tests pass. Pull requests run build/test checks without publishing or uploading a distribution. To build manually, open Actions → Build → Run workflow and select `master`.
+Pushes to `master` or `main` and manual runs produce the `share-app-windows` Actions artifact. Downloading it gives a ZIP with `share-host.exe` and the supporting files directly at its root; there is no ZIP inside it. Tag pushes matching `v*` also upload this artifact, then the release job packages its contents as `share-app-<tag>.zip` and attaches it to the GitHub Release after the build and tests pass. Both downloads need only one extraction. Pull requests run build/test checks without publishing or uploading a distribution. To build manually, open Actions → Build → Run workflow and select `master`.
 
 To try an Actions build on Windows 11 x64:
 
 1. Open [Actions → Build](https://github.com/tanetakumi/remote-window-control/actions/workflows/build.yml), select a successful `master` run, and download `share-app-windows` under Artifacts (sign in to GitHub if needed).
-2. Extract the downloaded artifact, then extract the `share-app-*.zip` inside it to a folder.
-3. Install the Windows x64 [.NET 10 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) and download a Windows [ffmpeg build](https://ffmpeg.org/download.html) with `libvpx`. Put `ffmpeg.exe` beside `share-host.exe`.
+2. Extract the downloaded ZIP once to a folder. `share-host.exe` is directly inside that folder.
+3. Install the Windows x64 [.NET 10 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) and provide FFmpeg with `libvpx` on `PATH` (or place `ffmpeg.exe` beside `share-host.exe`).
 4. Run `.\share-host.exe` from that folder in PowerShell. Open `http://127.0.0.1:8443/` on the same Windows machine and select a window.
 
 For phone access, configure Cloudflare Tunnel and Access as described under Run and configuration, then open the protected HTTPS hostname on the phone. The loopback URL above is for the Windows host only.
 
-The ZIP contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env.example`, README.md and LICENSE. It remains a **development distribution**: .NET 10 runtime and ffmpeg are external requirements. The host also resolves `ffmpeg.exe` beside its executable when supplied.
+The ZIP contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env`, `はじめにお読みください.txt` and LICENSE. The `.env` sets `SHARE_APP_ADDR=127.0.0.1:8443`. It remains a **development distribution**: the .NET 10 runtime and FFmpeg are external requirements. The host resolves `ffmpeg.exe` beside its executable or on `PATH`.
 
 Self-contained publishing, a pinned ffmpeg bundle with checksum/notices, and a clean Windows 11 installation test remain pending after Windows performance and device validation.
 
@@ -157,6 +152,7 @@ Key implementation locations:
 | Function | Source |
 | --- | --- |
 | Touch gestures and release | `web-ui/src/input/gestures.js` |
+| Mouse input and shared video coordinates | `web-ui/src/input/mouse.js`, `coordinates.js` |
 | Committed text, IME and special keys | `web-ui/src/input/keyboard.js` |
 | Connection readiness, ICE and cleanup | `web-ui/src/core/webrtc.js` |
 | Window list and target selection APIs | `web-ui/src/core/api.js` |

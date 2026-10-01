@@ -98,27 +98,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Create distro
         if: github.event_name != 'pull_request'
-        id: distro
-        env:
-          DIST_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('{0}-{1}', github.run_number, github.sha) }}
         run: |
-          $version = $env:DIST_VERSION
-          $dist = "dist/share-app-$version"
+          $dist = "dist/share-app"
           New-Item -ItemType Directory -Force -Path "$dist/web", "$dist/CaptureProbe" | Out-Null
           Copy-Item control-server/bin/share-host.exe $dist/
+          Copy-Item .github/distribution/はじめにお読みください.txt $dist/
           Copy-Item -Recurse web-ui/dist/* $dist/web/
           Copy-Item -Recurse dist/native/* $dist/CaptureProbe/
-          Copy-Item .env.example, README.md, LICENSE $dist/
-          # Include dotfiles such as .env.example, regardless of hidden-file handling.
-          [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $dist).Path, (Join-Path $PWD "dist/share-app-$version.zip"))
-          "zip_path=dist/share-app-$version.zip" >> $env:GITHUB_OUTPUT
+          [System.IO.File]::WriteAllText((Join-Path $dist ".env"), "SHARE_APP_ADDR=127.0.0.1:8443`n", [System.Text.UTF8Encoding]::new($false))
+          Copy-Item LICENSE $dist/
       - name: Upload artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: share-app-windows
-          path: ${{ steps.distro.outputs.zip_path }}
-          compression-level: 0
+          # Upload the directory contents so the downloaded ZIP needs one extraction.
+          path: dist/share-app/
+          include-hidden-files: true
+          compression-level: 6
           if-no-files-found: error
 
   release:
@@ -133,7 +130,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: share-app-windows
-          path: dist
+          path: dist/share-app
+      - name: Package release ZIP
+        shell: pwsh
+        env:
+          DIST_VERSION: ${{ github.ref_name }}
+        run: |
+          # Archive the contents directly, including the generated .env dotfile.
+          [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path "dist/share-app").Path, (Join-Path $PWD "dist/share-app-$env:DIST_VERSION.zip"))
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
