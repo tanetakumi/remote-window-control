@@ -4,8 +4,9 @@ import (
 	"github.com/gorilla/websocket"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"share-app-host/internal/capture"
 	"share-app-host/internal/input"
-	"share-app-host/internal/nativecapture"
 	"share-app-host/internal/window"
 	"strings"
 	"testing"
@@ -13,7 +14,7 @@ import (
 )
 
 func TestWebSocketRejectsSecondTabAndReconnectsAfterCleanup(t *testing.T) {
-	bridge := nativecapture.NewBridge(t.TempDir())
+	bridge := capture.NewProbe(filepath.Join(t.TempDir(), "CaptureProbe.exe"))
 	h := NewHub(input.NewDispatcher(nil), bridge, window.NewSelection(bridge))
 	server := httptest.NewServer(h)
 	defer server.Close()

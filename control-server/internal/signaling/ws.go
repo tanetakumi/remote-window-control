@@ -11,8 +11,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	pion "github.com/pion/webrtc/v4"
+	"share-app-host/internal/capture"
 	"share-app-host/internal/input"
-	"share-app-host/internal/nativecapture"
 	"share-app-host/internal/origin"
 	peerpkg "share-app-host/internal/webrtc"
 	"share-app-host/internal/window"
@@ -20,7 +20,7 @@ import (
 
 type Hub struct {
 	dispatcher *input.Dispatcher
-	bridge     *nativecapture.Bridge
+	bridge     *capture.Probe
 	targets    *window.Selection
 	mu         sync.Mutex
 	active     bool
@@ -35,7 +35,7 @@ type message struct {
 	Candidate *pion.ICECandidateInit `json:"candidate,omitempty"`
 }
 
-func NewHub(dispatcher *input.Dispatcher, bridge *nativecapture.Bridge, targets *window.Selection) *Hub {
+func NewHub(dispatcher *input.Dispatcher, bridge *capture.Probe, targets *window.Selection) *Hub {
 	return &Hub{dispatcher: dispatcher, bridge: bridge, targets: targets, upgrader: websocket.Upgrader{CheckOrigin: origin.Same, HandshakeTimeout: 5 * time.Second}}
 }
 func (h *Hub) acquire() bool {

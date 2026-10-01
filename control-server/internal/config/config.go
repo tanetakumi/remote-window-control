@@ -1,92 +1,89 @@
+// Package config resolves the host's settings and the locations of the files
+// it depends on.
+//
+// Settings come from environment variables, then an optional .env file, then
+// defaults. The .env file is plain data (KEY=VALUE), never evaluated as shell.
 package config
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
-type Config struct{ ListenAddr, ClientDir, BaseDir string }
+const (
+	envAddr      = "SHARE_APP_ADDR"
+	envClientDir = "SHARE_APP_CLIENT_DIR"
 
+	defaultAddr = "127.0.0.1:8443"
+)
+
+// Config is the resolved host configuration.
+type Config struct {
+	// ListenAddr is the HTTP listen address; loopback by default.
+	ListenAddr string
+	// ClientDir is the directory of web client assets that are served.
+	ClientDir string
+	// SnapshotDir is where saved snapshots are written.
+	SnapshotDir string
+	// ProbePath is the CaptureProbe executable.
+	ProbePath string
+	// FFmpegPath is the ffmpeg executable; a bare name is looked up on PATH.
+	FFmpegPath string
+}
+
+// Env is the process context a configuration is resolved from. It exists so
+// tests can resolve configuration without touching the real environment.
+type Env struct {
+	// Getenv looks up an environment variable.
+	Getenv func(string) string
+	// ExeDir is the directory of the running executable.
+	ExeDir string
+	// WorkDir is the current directory, used to find a source checkout. It may
+	// be empty.
+	WorkDir string
+}
+
+// CurrentEnv returns the environment of the running process.
+func CurrentEnv() Env {
+	exe, _ := os.Executable()
+	workDir, _ := os.Getwd()
+	return Env{Getenv: os.Getenv, ExeDir: filepath.Dir(exe), WorkDir: workDir}
+}
+
+// Load resolves the configuration of the running process.
 func Load() (Config, error) {
-	base := resolveBaseDir()
-	values, err := readConfig(filepath.Join(base, ".env"))
+	return LoadFrom(CurrentEnv())
+}
+
+// LoadFrom resolves the configuration for env.
+func LoadFrom(env Env) (Config, error) {
+	base := resolveBaseDir(env)
+
+	envFile := filepath.Join(base, ".env")
+	fileValues, err := readDotenvFile(envFile)
 	if err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("%s: %w", envFile, err)
 	}
-	value := func(key, fallback string) string {
-		if v := os.Getenv(key); v != "" {
+	setting := func(key, fallback string) string {
+		if v := env.Getenv(key); v != "" {
 			return v
 		}
-		if v := values[key]; v != "" {
+		if v := fileValues[key]; v != "" {
 			return v
 		}
 		return fallback
 	}
-	client := value("SHARE_APP_CLIENT_DIR", resolveClientDir(base))
-	if !filepath.IsAbs(client) {
-		client = filepath.Join(base, client)
-	}
-	return Config{ListenAddr: value("SHARE_APP_ADDR", "127.0.0.1:8443"), ClientDir: client, BaseDir: base}, nil
-}
 
-// Configuration is data, never shell code. Environment variables override the file.
-func readConfig(path string) (map[string]string, error) {
-	result := make(map[string]string)
-	file, err := os.Open(path)
-	if os.IsNotExist(err) {
-		return result, nil
+	clientDir := setting(envClientDir, defaultClientDir(base))
+	if !filepath.IsAbs(clientDir) {
+		clientDir = filepath.Join(base, clientDir)
 	}
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	for line := 1; scanner.Scan(); line++ {
-		text := strings.TrimSpace(scanner.Text())
-		if text == "" || strings.HasPrefix(text, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(text, "=")
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		if !ok || (key != "SHARE_APP_ADDR" && key != "SHARE_APP_CLIENT_DIR") {
-			return nil, fmt.Errorf("invalid configuration key at line %d", line)
-		}
-		if len(value) >= 2 && (value[0] == '"' && value[len(value)-1] == '"' || value[0] == '\'' && value[len(value)-1] == '\'') {
-			value = value[1 : len(value)-1]
-		}
-		result[key] = value
-	}
-	return result, scanner.Err()
-}
-func resolveBaseDir() string {
-	exe, _ := os.Executable()
-	exeDir := filepath.Dir(exe)
-	for _, entry := range []string{"web", "CaptureProbe"} {
-		if info, err := os.Stat(filepath.Join(exeDir, entry)); err == nil && info.IsDir() {
-			return exeDir
-		}
-	}
-	cwd, err := os.Getwd()
-	if err == nil {
-		for dir := cwd; ; dir = filepath.Dir(dir) {
-			if _, err := os.Stat(filepath.Join(dir, "control-server", "go.mod")); err == nil {
-				return dir
-			}
-			if filepath.Dir(dir) == dir {
-				break
-			}
-		}
-	}
-	return exeDir
-}
-func resolveClientDir(base string) string {
-	web := filepath.Join(base, "web")
-	if info, err := os.Stat(web); err == nil && info.IsDir() {
-		return web
-	}
-	return filepath.Join(base, "web-ui", "dist")
+	return Config{
+		ListenAddr:  setting(envAddr, defaultAddr),
+		ClientDir:   clientDir,
+		SnapshotDir: filepath.Join(base, "snapshots"),
+		ProbePath:   findProbe(base),
+		FFmpegPath:  findFFmpeg(env.ExeDir),
+	}, nil
 }

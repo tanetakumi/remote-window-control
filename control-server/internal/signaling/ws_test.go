@@ -3,8 +3,9 @@ package signaling
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"share-app-host/internal/capture"
 	"share-app-host/internal/input"
-	"share-app-host/internal/nativecapture"
 	"share-app-host/internal/window"
 	"sync"
 	"sync/atomic"
@@ -43,7 +44,7 @@ func TestSingleSlotConcurrentAcquisitionAndShutdown(t *testing.T) {
 }
 
 func TestActiveConnectionAllowsTargetSelection(t *testing.T) {
-	bridge := nativecapture.NewBridge(t.TempDir())
+	bridge := capture.NewProbe(filepath.Join(t.TempDir(), "CaptureProbe.exe"))
 	h := NewHub(input.NewDispatcher(nil), bridge, window.NewSelection(bridge))
 	if !h.acquire() {
 		t.Fatal("could not acquire control slot")
@@ -52,7 +53,7 @@ func TestActiveConnectionAllowsTargetSelection(t *testing.T) {
 	defer h.release()
 	// Reaching the missing capture helper confirms selection is allowed while
 	// a connection is active, without any identity or ownership token.
-	if _, err := h.SelectTarget(context.Background(), 1); !errors.Is(err, nativecapture.ErrBridgeUnavailable) {
+	if _, err := h.SelectTarget(context.Background(), 1); !errors.Is(err, capture.ErrUnavailable) {
 		t.Fatalf("active target selection: %v", err)
 	}
 }

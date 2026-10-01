@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"share-app-host/internal/nativecapture"
+	"share-app-host/internal/capture"
 	"testing"
 	"time"
 )
@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 	}
 	os.Exit(m.Run())
 }
-func helperBridge(t *testing.T) *nativecapture.Bridge {
+func helperBridge(t *testing.T) *capture.Probe {
 	t.Helper()
 	base := t.TempDir()
 	dir := filepath.Join(base, "CaptureProbe")
@@ -58,7 +58,7 @@ func helperBridge(t *testing.T) *nativecapture.Bridge {
 		t.Fatal(closeErr)
 	}
 	t.Setenv("RWC_MEDIA_CAPTURE_HELPER", "1")
-	return nativecapture.NewBridge(base)
+	return capture.NewProbe(filepath.Join(dir, "CaptureProbe.exe"))
 }
 func TestTargetChangeCancelsStalledCapture(t *testing.T) {
 	bridge := helperBridge(t)

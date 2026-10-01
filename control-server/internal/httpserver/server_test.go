@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"share-app-host/internal/nativecapture"
+	"share-app-host/internal/capture"
 	"share-app-host/internal/window"
 	"strings"
 	"testing"
@@ -23,8 +23,8 @@ func testServer(t *testing.T) *Server {
 			t.Fatal(err)
 		}
 	}
-	bridge := nativecapture.NewBridge(base)
-	return New("127.0.0.1:8443", web, http.NotFoundHandler(), bridge, window.NewSelection(bridge), base)
+	bridge := capture.NewProbe(filepath.Join(base, "CaptureProbe", "CaptureProbe.exe"))
+	return New("127.0.0.1:8443", web, http.NotFoundHandler(), bridge, window.NewSelection(bridge), filepath.Join(base, "snapshots"))
 }
 func request(s *Server, method, path, origin string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, "http://host:8443"+path, nil)

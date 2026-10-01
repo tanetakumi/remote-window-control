@@ -16,14 +16,14 @@ import (
 	pion "github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/pion/webrtc/v4/pkg/media/ivfreader"
-	"share-app-host/internal/nativecapture"
+	"share-app-host/internal/capture"
 	"share-app-host/internal/tailbuf"
 	"share-app-host/internal/window"
 )
 
 const streamFPS = 10
 
-func attachWindowVideoTrack(ctx context.Context, pc *pion.PeerConnection, bridge *nativecapture.Bridge, targets *window.Selection, workers *sync.WaitGroup, onFailure func(error)) error {
+func attachWindowVideoTrack(ctx context.Context, pc *pion.PeerConnection, bridge *capture.Probe, targets *window.Selection, workers *sync.WaitGroup, onFailure func(error)) error {
 	track, err := pion.NewTrackLocalStaticSample(pion.RTPCodecCapability{MimeType: pion.MimeTypeVP8}, "video", "share-app")
 	if err != nil {
 		return err
@@ -56,7 +56,7 @@ func attachWindowVideoTrack(ctx context.Context, pc *pion.PeerConnection, bridge
 	}()
 	return nil
 }
-func streamSelectedWindow(ctx context.Context, bridge *nativecapture.Bridge, targets *window.Selection, track *pion.TrackLocalStaticSample) error {
+func streamSelectedWindow(ctx context.Context, bridge *capture.Probe, targets *window.Selection, track *pion.TrackLocalStaticSample) error {
 	for ctx.Err() == nil {
 		handle, ok, changed := targets.State()
 		if !ok || handle == 0 {
@@ -80,7 +80,7 @@ func streamSelectedWindow(ctx context.Context, bridge *nativecapture.Bridge, tar
 	return nil
 }
 
-func streamTarget(parent context.Context, bridge *nativecapture.Bridge, track *pion.TrackLocalStaticSample, handle uint64, changed <-chan struct{}) error {
+func streamTarget(parent context.Context, bridge *capture.Probe, track *pion.TrackLocalStaticSample, handle uint64, changed <-chan struct{}) error {
 	ctx, cancel := context.WithCancel(parent)
 	var watcher sync.WaitGroup
 	watcher.Add(1)
@@ -102,7 +102,7 @@ func streamTarget(parent context.Context, bridge *nativecapture.Bridge, track *p
 	for i := 0; i < 3; i++ {
 		buffers <- nil
 	}
-	frames := make(chan nativecapture.StreamFrame, 1)
+	frames := make(chan capture.Frame, 1)
 	readDone := make(chan struct{})
 	readErr := make(chan error, 1)
 	go func() {
@@ -149,7 +149,7 @@ func streamTarget(parent context.Context, bridge *nativecapture.Bridge, track *p
 				return nil
 			}
 		case <-timer.C:
-			var frame nativecapture.StreamFrame
+			var frame capture.Frame
 			select {
 			case frame = <-frames:
 			default:

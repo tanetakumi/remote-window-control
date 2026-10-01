@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"share-app-host/internal/nativecapture"
+	"share-app-host/internal/capture"
 	"share-app-host/internal/origin"
 	"share-app-host/internal/window"
 )
@@ -27,13 +27,13 @@ type Server struct {
 	clientDir   string
 	snapshotDir string
 	snapshotMu  sync.Mutex
-	capture     *nativecapture.Bridge
+	probe       *capture.Probe
 	targets     *window.Selection
 	selector    targetSelector
 }
 
-func New(addr, clientDir string, wsHandler http.Handler, capture *nativecapture.Bridge, targets *window.Selection, baseDir string) *Server {
-	s := &Server{clientDir: clientDir, capture: capture, targets: targets, snapshotDir: filepath.Join(baseDir, "snapshots")}
+func New(addr, clientDir string, wsHandler http.Handler, probe *capture.Probe, targets *window.Selection, snapshotDir string) *Server {
+	s := &Server{clientDir: clientDir, probe: probe, targets: targets, snapshotDir: snapshotDir}
 	s.selector, _ = wsHandler.(targetSelector)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/config", s.handleConfig)
@@ -104,6 +104,14 @@ func (s *Server) handleTargetWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", 405)
 	}
 }
+
+// snapshotResult is the JSON response for a snapshot saved to disk.
+type snapshotResult struct {
+	Path   string `json:"path"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
 func snapshotName(name string) bool {
 	if name == "" || len(name) > 100 || !strings.HasSuffix(strings.ToLower(name), ".png") {
 		return false
@@ -150,7 +158,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "target window not selected", 400)
 		return
 	}
-	data, err := s.capture.CapturePNG(r.Context(), handle)
+	data, err := s.probe.CapturePNG(r.Context(), handle)
 	if err != nil {
 		http.Error(w, err.Error(), 502)
 		return
@@ -185,7 +193,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "capture returned invalid PNG", 502)
 		return
 	}
-	writeJSON(w, nativecapture.SnapshotResult{Path: filepath.Join("snapshots", name), Width: dimensions.Width, Height: dimensions.Height})
+	writeJSON(w, snapshotResult{Path: filepath.Join("snapshots", name), Width: dimensions.Width, Height: dimensions.Height})
 }
 func (s *Server) handleHostUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

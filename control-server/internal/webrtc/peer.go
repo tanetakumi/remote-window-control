@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	pion "github.com/pion/webrtc/v4"
-	"share-app-host/internal/nativecapture"
+	"share-app-host/internal/capture"
 	"share-app-host/internal/window"
 )
 
@@ -21,7 +21,7 @@ type Peer struct {
 	offered    bool
 }
 
-func NewPeer(bridge *nativecapture.Bridge, targets *window.Selection, onICE func(pion.ICECandidateInit), onControl func([]byte), onFailure func(error)) (*Peer, error) {
+func NewPeer(bridge *capture.Probe, targets *window.Selection, onICE func(pion.ICECandidateInit), onControl func([]byte), onFailure func(error)) (*Peer, error) {
 	pc, err := pion.NewAPI().NewPeerConnection(pion.Configuration{})
 	if err != nil {
 		return nil, err
