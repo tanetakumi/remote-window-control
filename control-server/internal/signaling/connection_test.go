@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"share-app-host/internal/input"
 	"share-app-host/internal/nativecapture"
-	"share-app-host/internal/targetwindow"
+	"share-app-host/internal/window"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +14,7 @@ import (
 
 func TestWebSocketRejectsSecondTabAndReconnectsAfterCleanup(t *testing.T) {
 	bridge := nativecapture.NewBridge(t.TempDir())
-	h := NewHub(input.NewDispatcher(nil), bridge, targetwindow.NewManager(bridge))
+	h := NewHub(input.NewDispatcher(nil), bridge, window.NewSelection(bridge))
 	server := httptest.NewServer(h)
 	defer server.Close()
 	defer h.Close()

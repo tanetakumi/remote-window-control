@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"share-app-host/internal/nativecapture"
-	"share-app-host/internal/targetwindow"
-	"share-app-host/internal/websecurity"
+	"share-app-host/internal/origin"
+	"share-app-host/internal/window"
 )
 
 type targetSelector interface {
-	SelectTarget(context.Context, uint64) (nativecapture.WindowInfo, error)
+	SelectTarget(context.Context, uint64) (window.Info, error)
 }
 type Server struct {
 	httpServer  *http.Server
@@ -28,11 +28,11 @@ type Server struct {
 	snapshotDir string
 	snapshotMu  sync.Mutex
 	capture     *nativecapture.Bridge
-	targets     *targetwindow.Manager
+	targets     *window.Selection
 	selector    targetSelector
 }
 
-func New(addr, clientDir string, wsHandler http.Handler, capture *nativecapture.Bridge, targets *targetwindow.Manager, baseDir string) *Server {
+func New(addr, clientDir string, wsHandler http.Handler, capture *nativecapture.Bridge, targets *window.Selection, baseDir string) *Server {
 	s := &Server{clientDir: clientDir, capture: capture, targets: targets, snapshotDir: filepath.Join(baseDir, "snapshots")}
 	s.selector, _ = wsHandler.(targetSelector)
 	mux := http.NewServeMux()
@@ -49,7 +49,7 @@ func New(addr, clientDir string, wsHandler http.Handler, capture *nativecapture.
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("Cache-Control", "no-store")
 		}
-		if !websecurity.SameOrigin(r) {
+		if !origin.Same(r) {
 			http.Error(w, "origin forbidden", http.StatusForbidden)
 			return
 		}
@@ -88,7 +88,7 @@ func (s *Server) handleTargetWindow(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid target request", 400)
 			return
 		}
-		var selected nativecapture.WindowInfo
+		var selected window.Info
 		var err error
 		if s.selector != nil {
 			selected, err = s.selector.SelectTarget(r.Context(), payload.Handle)

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"share-app-host/internal/input"
 	"share-app-host/internal/nativecapture"
-	"share-app-host/internal/targetwindow"
+	"share-app-host/internal/window"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -44,7 +44,7 @@ func TestSingleSlotConcurrentAcquisitionAndShutdown(t *testing.T) {
 
 func TestActiveConnectionAllowsTargetSelection(t *testing.T) {
 	bridge := nativecapture.NewBridge(t.TempDir())
-	h := NewHub(input.NewDispatcher(nil), bridge, targetwindow.NewManager(bridge))
+	h := NewHub(input.NewDispatcher(nil), bridge, window.NewSelection(bridge))
 	if !h.acquire() {
 		t.Fatal("could not acquire control slot")
 	}

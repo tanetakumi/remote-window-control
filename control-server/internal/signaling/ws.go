@@ -13,15 +13,15 @@ import (
 	pion "github.com/pion/webrtc/v4"
 	"share-app-host/internal/input"
 	"share-app-host/internal/nativecapture"
-	"share-app-host/internal/targetwindow"
+	"share-app-host/internal/origin"
 	peerpkg "share-app-host/internal/webrtc"
-	"share-app-host/internal/websecurity"
+	"share-app-host/internal/window"
 )
 
 type Hub struct {
 	dispatcher *input.Dispatcher
 	bridge     *nativecapture.Bridge
-	targets    *targetwindow.Manager
+	targets    *window.Selection
 	mu         sync.Mutex
 	active     bool
 	activeConn *websocket.Conn
@@ -35,8 +35,8 @@ type message struct {
 	Candidate *pion.ICECandidateInit `json:"candidate,omitempty"`
 }
 
-func NewHub(dispatcher *input.Dispatcher, bridge *nativecapture.Bridge, targets *targetwindow.Manager) *Hub {
-	return &Hub{dispatcher: dispatcher, bridge: bridge, targets: targets, upgrader: websocket.Upgrader{CheckOrigin: websecurity.SameOrigin, HandshakeTimeout: 5 * time.Second}}
+func NewHub(dispatcher *input.Dispatcher, bridge *nativecapture.Bridge, targets *window.Selection) *Hub {
+	return &Hub{dispatcher: dispatcher, bridge: bridge, targets: targets, upgrader: websocket.Upgrader{CheckOrigin: origin.Same, HandshakeTimeout: 5 * time.Second}}
 }
 func (h *Hub) acquire() bool {
 	h.mu.Lock()
@@ -64,18 +64,18 @@ func (h *Hub) Close() {
 	h.mu.Unlock()
 	h.workers.Wait()
 }
-func (h *Hub) SelectTarget(ctx context.Context, handle uint64) (nativecapture.WindowInfo, error) {
+func (h *Hub) SelectTarget(ctx context.Context, handle uint64) (window.Info, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
-		return nativecapture.WindowInfo{}, fmt.Errorf("control server is shutting down")
+		return window.Info{}, fmt.Errorf("control server is shutting down")
 	}
-	var selected nativecapture.WindowInfo
+	var selected window.Info
 	err := h.dispatcher.ChangeTarget(func() error { var err error; selected, err = h.targets.Select(ctx, handle); return err })
 	return selected, err
 }
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !websecurity.SameOrigin(r) {
+	if !origin.Same(r) {
 		http.Error(w, "origin forbidden", 403)
 		return
 	}

@@ -15,7 +15,7 @@ import (
 	"share-app-host/internal/input"
 	"share-app-host/internal/nativecapture"
 	"share-app-host/internal/signaling"
-	"share-app-host/internal/targetwindow"
+	"share-app-host/internal/window"
 )
 
 type App struct {
@@ -31,7 +31,7 @@ func (a *App) Run() error {
 		log.Printf("DPI awareness: %v", err)
 	}
 	captureBridge := nativecapture.NewBridge(a.cfg.BaseDir)
-	targets := targetwindow.NewManager(captureBridge)
+	targets := window.NewSelection(captureBridge)
 	dispatcher := input.NewDispatcher(input.NewSendInputInjector(targets))
 	signalingHub := signaling.NewHub(dispatcher, captureBridge, targets)
 	server := httpserver.New(a.cfg.ListenAddr, a.cfg.ClientDir, signalingHub, captureBridge, targets, a.cfg.BaseDir)

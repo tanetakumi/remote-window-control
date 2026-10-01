@@ -11,7 +11,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"share-app-host/internal/processio"
+	"share-app-host/internal/tailbuf"
+	"share-app-host/internal/window"
 	"sync"
 	"time"
 )
@@ -31,7 +32,7 @@ type StreamSession struct {
 	command     *exec.Cmd
 	stdout      *bufio.Reader
 	pipe        io.ReadCloser
-	stderr      processio.Diagnostics
+	stderr      tailbuf.Buffer
 	done        chan struct{}
 	waitErr     error
 	cancel      context.CancelFunc
@@ -72,12 +73,12 @@ func (b *Bridge) CaptureSnapshot(ctx context.Context, r SnapshotRequest) (Snapsh
 	err = json.Unmarshal(data, &result)
 	return result, err
 }
-func (b *Bridge) ListWindows(ctx context.Context) ([]WindowInfo, error) {
+func (b *Bridge) ListWindows(ctx context.Context) ([]window.Info, error) {
 	data, err := b.output(ctx, "--list")
 	if err != nil {
 		return nil, err
 	}
-	var result []WindowInfo
+	var result []window.Info
 	err = json.Unmarshal(data, &result)
 	return result, err
 }

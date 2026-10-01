@@ -17,13 +17,13 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/pion/webrtc/v4/pkg/media/ivfreader"
 	"share-app-host/internal/nativecapture"
-	"share-app-host/internal/processio"
-	"share-app-host/internal/targetwindow"
+	"share-app-host/internal/tailbuf"
+	"share-app-host/internal/window"
 )
 
 const streamFPS = 10
 
-func attachWindowVideoTrack(ctx context.Context, pc *pion.PeerConnection, bridge *nativecapture.Bridge, targets *targetwindow.Manager, workers *sync.WaitGroup, onFailure func(error)) error {
+func attachWindowVideoTrack(ctx context.Context, pc *pion.PeerConnection, bridge *nativecapture.Bridge, targets *window.Selection, workers *sync.WaitGroup, onFailure func(error)) error {
 	track, err := pion.NewTrackLocalStaticSample(pion.RTPCodecCapability{MimeType: pion.MimeTypeVP8}, "video", "share-app")
 	if err != nil {
 		return err
@@ -56,7 +56,7 @@ func attachWindowVideoTrack(ctx context.Context, pc *pion.PeerConnection, bridge
 	}()
 	return nil
 }
-func streamSelectedWindow(ctx context.Context, bridge *nativecapture.Bridge, targets *targetwindow.Manager, track *pion.TrackLocalStaticSample) error {
+func streamSelectedWindow(ctx context.Context, bridge *nativecapture.Bridge, targets *window.Selection, track *pion.TrackLocalStaticSample) error {
 	for ctx.Err() == nil {
 		handle, ok, changed := targets.State()
 		if !ok || handle == 0 {
@@ -179,7 +179,7 @@ type vp8EncoderSession struct {
 	cancel                context.CancelFunc
 	waitDone, consumeDone chan struct{}
 	waitErr, consumeErr   error
-	stderr                processio.Diagnostics
+	stderr                tailbuf.Buffer
 	closeOnce             sync.Once
 	closeErr              error
 }
