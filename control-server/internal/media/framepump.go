@@ -7,7 +7,8 @@ import (
 )
 
 // pumpBuffers is the number of pixel buffers in circulation: one being read
-// into, one holding the newest queued frame, and one owned by the encoder.
+// into, one holding the newest queued frame, and one retained by the consumer
+// as the latest image (also used by the encoder until replaced).
 const pumpBuffers = 3
 
 // framePump reads frames from a stream on its own goroutine, so a slow encoder

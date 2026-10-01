@@ -9,6 +9,8 @@ import (
 	"time"
 
 	pionmedia "github.com/pion/webrtc/v4/pkg/media"
+
+	"share-app-host/internal/capture"
 )
 
 // Pipeline captures the selected window, encodes it and writes the samples to
@@ -64,7 +66,9 @@ func (p *Pipeline) Run(ctx context.Context) error {
 // returns nil in both cases, and an error if capture or encoding fails.
 //
 // It owns one capture stream and one long-lived encoder per frame size; the
-// encoder is restarted only when the window's size changes.
+// encoder is restarted only when the window's size changes. The newest frame is
+// kept and encoded at the configured rate even when capture sends no new one,
+// because a static window would otherwise never produce another keyframe.
 func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-chan struct{}) (result error) {
 	started := time.Now()
 	var frames uint64
@@ -106,6 +110,7 @@ func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-ch
 	ticker := time.NewTicker(time.Second / time.Duration(p.encoder.FPS))
 	defer ticker.Stop()
 	lastFrame := time.Now()
+	var current capture.Frame
 	stallLogged := false
 	for {
 		select {
@@ -113,30 +118,38 @@ func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-ch
 			return pump.err()
 		case <-ticker.C:
 		}
+		if ctx.Err() != nil {
+			return pump.err()
+		}
 
 		frame, ok := pump.next()
-		if !ok {
-			if !stallLogged && time.Since(lastFrame) >= 5*time.Second {
-				p.logf("capture waiting hwnd=%d no new frame for %s frames=%d", handle, time.Since(lastFrame).Round(time.Millisecond), frames)
-				stallLogged = true
+		if ok {
+			if current.Data != nil {
+				pump.recycle(current.Data)
 			}
+			current = frame
+			if frames == 0 {
+				p.logf("first capture frame hwnd=%d size=%dx%d elapsed=%s", handle, frame.Width, frame.Height, time.Since(started).Round(time.Millisecond))
+			}
+			frames++
+			lastFrame = time.Now()
+			stallLogged = false
+		} else if !stallLogged && time.Since(lastFrame) >= 5*time.Second {
+			p.logf("capture waiting hwnd=%d no new frame for %s frames=%d", handle, time.Since(lastFrame).Round(time.Millisecond), frames)
+			stallLogged = true
+		}
+		if current.Data == nil {
 			continue
 		}
-		if frames == 0 {
-			p.logf("first capture frame hwnd=%d size=%dx%d elapsed=%s", handle, frame.Width, frame.Height, time.Since(started).Round(time.Millisecond))
-		}
-		frames++
-		lastFrame = time.Now()
-		stallLogged = false
-		if !enc.matches(frame.Width, frame.Height) {
+		// current stays owned by this loop until a newer frame replaces it.
+		if !enc.matches(current.Width, current.Height) {
 			closeEncoder(enc)
 			enc = nil
-			if enc, err = startEncoder(ctx, p.encoder, sink, frame.Width, frame.Height); err != nil {
+			if enc, err = startEncoder(ctx, p.encoder, sink, current.Width, current.Height); err != nil {
 				return fmt.Errorf("start encoder hwnd=%d: %w", handle, err)
 			}
 		}
-		err = enc.WriteFrame(frame.Data)
-		pump.recycle(frame.Data)
+		err = enc.WriteFrame(current.Data)
 		if err != nil {
 			return fmt.Errorf("encode frame hwnd=%d: %w", handle, err)
 		}

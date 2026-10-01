@@ -80,7 +80,7 @@ When using an extracted distribution ZIP, install the .NET 10 x64 runtime and pr
 .\share-host.exe
 ```
 
-The default is HTTP on `127.0.0.1:8443`, listening on loopback only. Open `http://127.0.0.1:8443/` on Windows, or the externally configured HTTPS URL on the phone. Select a window to start control. A minimized window is restored without activating it, because capture delivers no frames for it, and the viewport size is sent as soon as the control channel opens. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
+The default is HTTP on `127.0.0.1:8443`, listening on loopback only. Open `http://127.0.0.1:8443/` on Windows, or the externally configured HTTPS URL on the phone. Select a window to start control. A minimized window is restored without activating it, because capture delivers no frames for it; the viewport size is sent as soon as the control channel opens. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
 
 The host also writes its log to `logs/share-host.log` beside `share-host.exe`, whatever the working directory. It is appended across restarts, uses UTC timestamps, and rotates at 5 MiB keeping `.1` and `.2`. It records startup and configuration, window selection, each connection (WebRTC state, control channel, capture start/stop, first captured frame, first video sample, a warning when no frame arrives for five seconds) and errors, including CaptureProbe and ffmpeg stderr. Input, pixels and SDP are not logged. If the log cannot be opened, startup fails and says why.
 
@@ -117,7 +117,7 @@ Invoke-RestMethod 'http://127.0.0.1:8443/api/target-window' -Method Post -Conten
 Invoke-WebRequest 'http://127.0.0.1:8443/api/snapshot' -OutFile local-copy.png
 ```
 
-Streaming uses a single long-lived capture process and encoder, never one process per frame.
+Streaming uses a single long-lived capture process and encoder, never one process per frame. The newest captured frame is re-encoded at the configured rate even when the window sends no new one, so a static window keeps producing video and periodic keyframes.
 
 ## Current distribution status
 
@@ -145,7 +145,7 @@ Runtime changes must build in the order web UI → window capture → control se
 Streaming ownership rules:
 
 - Acquire the single control-connection slot before creating a peer; release it after processes, callbacks and held input have closed.
-- Keep one long-lived CaptureProbe per target and one long-lived ffmpeg encoder. Snapshot helpers are separate bounded operations. Never start streaming processes per frame.
+- Keep one long-lived CaptureProbe per target and one long-lived ffmpeg encoder, restarted only when the frame size changes. Keep the newest frame's buffer until a newer one replaces it. Snapshot helpers are separate bounded operations. Never start streaming processes per frame.
 - Validate the 24-byte BGRA header, bound the latest-frame handoff, and keep reusable-buffer ownership explicit.
 - Target switching must cancel capture without waiting for another frame. Consume RTCP, bound and synchronize diagnostics, and keep shutdown idempotent.
 - Preserve the 10fps/quality baseline until interactive Windows measurements justify tuning. Serve only explicit client asset roots; never restore parent-directory fallback. Keep authentication in the external access layer and bind HTTP to loopback by default.

@@ -84,6 +84,18 @@ func steady(size int) readFunc {
 	}
 }
 
+// singleFrame models a static window: WGC gives one image, then no updates.
+func singleFrame(size int) readFunc {
+	return func(s *fakeStream, buffer []byte) (capture.Frame, error) {
+		if s.nextID > 0 {
+			return stalled()(s, buffer)
+		}
+		s.nextID = 1
+		buffer = make([]byte, size*size*4)
+		return capture.Frame{Width: size, Height: size, Stride: size * 4, ID: 1, Data: buffer}, nil
+	}
+}
+
 // ---- source -----------------------------------------------------------------
 
 // fakeSource opens fakeStreams and records which windows were requested.
