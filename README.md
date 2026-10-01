@@ -66,7 +66,7 @@ $goExe = (Get-Command go).Source
 & $goExe test ./...
 ```
 
-Go installation is explicit in CI, with pinned Node/.NET/Go setup and locked dependency restoration. Pull requests, default-branch pushes and tag pushes build and test on a GitHub-hosted Windows runner; pushes also publish/package the distribution. No self-hosted runner is required. Only the separate tag release job has repository write permission. New updates cancel older runs for the same pull request. CI installs ffmpeg 8.1.1 through Chocolatey and verifies `libvpx` encoder support before running the Go tests, without reusing cached test results. Dependency locks are checked in; build outputs are ignored.
+Go installation is explicit in CI, with pinned Node/.NET/Go setup and locked dependency restoration. Pull requests, default-branch pushes, tag pushes and manual runs build and test on a GitHub-hosted Windows runner; pushes and manual runs also publish/package the distribution. No self-hosted runner is required. Only the separate tag release job has repository write permission. New updates cancel older runs for the same pull request. CI installs ffmpeg 8.1.1 through Chocolatey and verifies `libvpx` encoder support before running the Go tests, without reusing cached test results. Dependency locks are checked in; build outputs are ignored.
 
 Linux can build the client, cross-build CaptureProbe with `-p:EnableWindowsTargeting=true`, and cross-build the host with `GOOS=windows GOARCH=amd64`. From `control-server`, `go vet ./...` and `go test ./...` also run on Linux (the encoder integration test needs ffmpeg with `libvpx` and is skipped without it). Linux cannot execute WGC or Win32 input.
 
@@ -123,11 +123,11 @@ Streaming uses a single long-lived capture process and encoder, never one proces
 
 ## Current distribution status
 
-Pushes to `master` or `main` produce the `share-app-windows` Actions artifact containing `share-app-<run-number>-<commit-sha>.zip`. Tag pushes matching `v*` produce `share-app-<tag>.zip`, upload it as an Actions artifact for transfer, and attach it to the GitHub Release after the build and tests pass. Pull requests run build/test checks without publishing or uploading a distribution.
+Pushes to `master` or `main` and manual runs produce the `share-app-windows` Actions artifact containing `share-app-<run-number>-<commit-sha>.zip`. Tag pushes matching `v*` produce `share-app-<tag>.zip`, upload it as an Actions artifact for transfer, and attach it to the GitHub Release after the build and tests pass. Pull requests run build/test checks without publishing or uploading a distribution. To build manually, open Actions → Build → Run workflow and select `master`.
 
 To try an Actions build on Windows 11 x64:
 
-1. Open [Actions → Build](https://github.com/tanetakumi/remote-window-control/actions/workflows/build.yml), select a successful `master` push run, and download `share-app-windows` under Artifacts (sign in to GitHub if needed).
+1. Open [Actions → Build](https://github.com/tanetakumi/remote-window-control/actions/workflows/build.yml), select a successful `master` run, and download `share-app-windows` under Artifacts (sign in to GitHub if needed).
 2. Extract the downloaded artifact, then extract the `share-app-*.zip` inside it to a folder.
 3. Install the Windows x64 [.NET 10 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) and download a Windows [ffmpeg build](https://ffmpeg.org/download.html) with `libvpx`. Put `ffmpeg.exe` beside `share-host.exe`.
 4. Run `.\share-host.exe` from that folder in PowerShell. Open `http://127.0.0.1:8443/` on the same Windows machine and select a window.

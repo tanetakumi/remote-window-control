@@ -1,6 +1,7 @@
 name: Build
 
 on:
+  workflow_dispatch:
   push:
     branches: [master, main]
     tags: ['v*']
@@ -52,7 +53,7 @@ jobs:
           dotnet build window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish window capture
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         run: |
           dotnet publish window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-build -o dist/native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -86,7 +87,7 @@ jobs:
           & $goPath test -vet=off -count=1 ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Create distro
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         id: distro
         env:
           DIST_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('{0}-{1}', github.run_number, github.sha) }}
@@ -102,7 +103,7 @@ jobs:
           [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $dist).Path, (Join-Path $PWD "dist/share-app-$version.zip"))
           "zip_path=dist/share-app-$version.zip" >> $env:GITHUB_OUTPUT
       - name: Upload artifact
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: share-app-windows
