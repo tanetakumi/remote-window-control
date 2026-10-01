@@ -24,8 +24,6 @@ type Config struct {
 	ListenAddr string
 	// ClientDir is the directory of web client assets that are served.
 	ClientDir string
-	// SnapshotDir is where saved snapshots are written.
-	SnapshotDir string
 	// ProbePath is the CaptureProbe executable.
 	ProbePath string
 	// FFmpegPath is the ffmpeg executable; a bare name is looked up on PATH.
@@ -80,10 +78,9 @@ func LoadFrom(env Env) (Config, error) {
 		clientDir = filepath.Join(base, clientDir)
 	}
 	return Config{
-		ListenAddr:  setting(envAddr, defaultAddr),
-		ClientDir:   clientDir,
-		SnapshotDir: filepath.Join(base, "snapshots"),
-		ProbePath:   findProbe(base),
-		FFmpegPath:  findFFmpeg(env.ExeDir),
+		ListenAddr: setting(envAddr, defaultAddr),
+		ClientDir:  clientDir,
+		ProbePath:  findProbe(base),
+		FFmpegPath: findFFmpeg(env.ExeDir),
 	}, nil
 }

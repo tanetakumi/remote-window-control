@@ -39,8 +39,6 @@ type Options struct {
 	Addr string
 	// ClientDir is the directory of web client files to serve.
 	ClientDir string
-	// SnapshotDir is where snapshots requested with ?out= are saved.
-	SnapshotDir string
 
 	Windows   Windows
 	Snapshots Snapshotter
@@ -53,10 +51,9 @@ type Server struct {
 	httpServer *http.Server
 	handler    http.Handler
 
-	clientDir   string
-	snapshotDir string
-	windows     Windows
-	snapshots   Snapshotter
+	clientDir string
+	windows   Windows
+	snapshots Snapshotter
 
 	snapshotMu sync.Mutex // one snapshot helper at a time
 }
@@ -64,10 +61,9 @@ type Server struct {
 // New returns a Server for opts.
 func New(opts Options) *Server {
 	s := &Server{
-		clientDir:   opts.ClientDir,
-		snapshotDir: opts.SnapshotDir,
-		windows:     opts.Windows,
-		snapshots:   opts.Snapshots,
+		clientDir: opts.ClientDir,
+		windows:   opts.Windows,
+		snapshots: opts.Snapshots,
 	}
 	control := opts.Control
 	if control == nil {

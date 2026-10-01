@@ -64,11 +64,10 @@ func TestDevelopmentCheckoutDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := config.Config{
-		ListenAddr:  "127.0.0.1:8443",
-		ClientDir:   filepath.Join(root, "web-ui", "dist"),
-		SnapshotDir: filepath.Join(root, "snapshots"),
-		ProbePath:   filepath.Join(root, "CaptureProbe", "CaptureProbe.exe"),
-		FFmpegPath:  "ffmpeg",
+		ListenAddr: "127.0.0.1:8443",
+		ClientDir:  filepath.Join(root, "web-ui", "dist"),
+		ProbePath:  filepath.Join(root, "CaptureProbe", "CaptureProbe.exe"),
+		FFmpegPath: "ffmpeg",
 	}
 	if cfg != want {
 		t.Fatalf("got  %+v\nwant %+v", cfg, want)
@@ -88,7 +87,7 @@ func TestReleaseLayoutIsRecognisedBesideTheExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ClientDir != web || cfg.ProbePath != probe || cfg.FFmpegPath != ffmpeg || cfg.SnapshotDir != filepath.Join(exeDir, "snapshots") {
+	if cfg.ClientDir != web || cfg.ProbePath != probe || cfg.FFmpegPath != ffmpeg {
 		t.Fatalf("release layout not used: %+v", cfg)
 	}
 }
@@ -99,8 +98,13 @@ func TestExecutableDirectoryIsTheFallbackBase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.SnapshotDir != filepath.Join(exeDir, "snapshots") {
-		t.Fatalf("SnapshotDir = %q", cfg.SnapshotDir)
+	// With no release layout and no checkout, everything is looked up beside
+	// the executable.
+	if want := filepath.Join(exeDir, "CaptureProbe", "CaptureProbe.exe"); cfg.ProbePath != want {
+		t.Fatalf("ProbePath = %q, want %q", cfg.ProbePath, want)
+	}
+	if want := filepath.Join(exeDir, "web-ui", "dist"); cfg.ClientDir != want {
+		t.Fatalf("ClientDir = %q, want %q", cfg.ClientDir, want)
 	}
 }
 

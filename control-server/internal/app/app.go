@@ -43,12 +43,11 @@ func Run(cfg config.Config) error {
 	defer hub.Close()
 
 	server := httpapi.New(httpapi.Options{
-		Addr:        cfg.ListenAddr,
-		ClientDir:   cfg.ClientDir,
-		SnapshotDir: cfg.SnapshotDir,
-		Windows:     NewTargetService(selection, dispatcher),
-		Snapshots:   probe,
-		Control:     hub,
+		Addr:      cfg.ListenAddr,
+		ClientDir: cfg.ClientDir,
+		Windows:   NewTargetService(selection, dispatcher),
+		Snapshots: probe,
+		Control:   hub,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

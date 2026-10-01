@@ -3,50 +3,13 @@ package httpapi_test
 import (
 	"errors"
 	"net/http"
-	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-func TestSnapshotRejectsUnrestrictedOutputBeforeCapture(t *testing.T) {
-	e := newEnv(t)
-	e.windows.current = &notepad
-
-	for _, name := range []string{
-		"../secret.png", "d:/secret.png", "folder/file.png", `folder\file.png`, "a.png:stream",
-		"CON.png", "con.png", "NUL.png", "PRN.png", "AUX.png", "COM1.png", "LPT9.png", "COM3.tar.png",
-		".hidden.png", "a..png", "a.exe", "a.png.exe", "noextension", ".png",
-		"spaces not allowed.png", "ünïcode.png", strings.Repeat("a", 97) + ".png",
-	} {
-		w := e.do("GET", "/api/snapshot?out="+url.QueryEscape(name), "")
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("out=%q: %d, want 400", name, w.Code)
-		}
-	}
-	if calls := e.snapshots.calls(); len(calls) != 0 {
-		t.Fatalf("capture ran for a rejected filename: %v", calls)
-	}
-	entries, _ := os.ReadDir(e.snapshotDir)
-	if len(entries) != 0 {
-		t.Fatalf("files written: %v", entries)
-	}
-}
-
-func TestSnapshotAcceptsSimplePNGNames(t *testing.T) {
-	e := newEnv(t)
-	e.windows.current = &notepad
-	for _, name := range []string{"window-2026.png", "a.png", "UPPER.PNG", "my_shot.v2.png", "COMX.png", strings.Repeat("a", 96) + ".png"} {
-		if w := e.do("GET", "/api/snapshot?out="+name, ""); w.Code != http.StatusOK {
-			t.Errorf("out=%q: %d %s, want 200", name, w.Code, w.Body.String())
-		}
-	}
-}
-
-func TestSnapshotReturnsPNGBytes(t *testing.T) {
+func TestSnapshotReturnsThePNGOfTheSelectedWindow(t *testing.T) {
 	e := newEnv(t)
 	e.windows.current = &notepad
 
@@ -59,9 +22,6 @@ func TestSnapshotReturnsPNGBytes(t *testing.T) {
 	}
 	if calls := e.snapshots.calls(); len(calls) != 1 || calls[0] != notepad.Handle {
 		t.Fatalf("captured %v, want the selected window", calls)
-	}
-	if entries, _ := os.ReadDir(e.snapshotDir); len(entries) != 0 {
-		t.Fatalf("a snapshot without out= wrote files: %v", entries)
 	}
 }
 
@@ -76,85 +36,20 @@ func TestSnapshotNeedsATarget(t *testing.T) {
 	}
 }
 
-func TestSnapshotHwndOverridesTheSelectedWindow(t *testing.T) {
-	e := newEnv(t)
-
-	// Works with nothing selected.
-	if w := e.do("GET", "/api/snapshot?hwnd=777", ""); w.Code != http.StatusOK {
-		t.Fatalf("hwnd without a target = %d %s", w.Code, w.Body.String())
-	}
-	e.windows.current = &notepad
-	if w := e.do("GET", "/api/snapshot?hwnd=888", ""); w.Code != http.StatusOK {
-		t.Fatalf("hwnd with a target = %d", w.Code)
-	}
-	if calls := e.snapshots.calls(); len(calls) != 2 || calls[0] != 777 || calls[1] != 888 {
-		t.Fatalf("captured %v", calls)
-	}
-}
-
-func TestSnapshotRejectsAnInvalidHwnd(t *testing.T) {
+// Saving to a file and capturing another window used to be supported here. A
+// caller still passing those parameters must get an error, not PNG bytes where
+// it expects a JSON result.
+func TestSnapshotRefusesTheRemovedParameters(t *testing.T) {
 	e := newEnv(t)
 	e.windows.current = &notepad
-	for _, hwnd := range []string{"abc", "-1", "1.5", "0x10", "99999999999999999999999"} {
-		w := e.do("GET", "/api/snapshot?hwnd="+hwnd, "")
-		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "invalid hwnd") {
-			t.Errorf("hwnd=%q: %d %q", hwnd, w.Code, w.Body.String())
+	for _, query := range []string{"out=window.png", "hwnd=777", "out=", "hwnd=", "out=a.png&hwnd=1"} {
+		w := e.do("GET", "/api/snapshot?"+query, "")
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "not supported") {
+			t.Errorf("?%s: %d %q, want 400", query, w.Code, w.Body.String())
 		}
 	}
-	if w := e.do("GET", "/api/snapshot?hwnd=0", ""); w.Code != http.StatusBadRequest {
-		t.Errorf("hwnd=0: %d, want 400", w.Code)
-	}
-}
-
-func TestSnapshotSavesANewFile(t *testing.T) {
-	e := newEnv(t) // the snapshot directory does not exist yet
-	e.windows.current = &notepad
-
-	w := e.do("GET", "/api/snapshot?out=shot.png", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET = %d %s", w.Code, w.Body.String())
-	}
-	result := decode[struct {
-		Path          string
-		Width, Height int
-	}](t, w)
-	if want := filepath.Join("snapshots", "shot.png"); result.Path != want || result.Width != 3 || result.Height != 2 {
-		t.Fatalf("result = %+v, want path %q 3x2", result, want)
-	}
-	saved, err := os.ReadFile(filepath.Join(e.snapshotDir, "shot.png"))
-	if err != nil || string(saved) != string(e.snapshots.data) {
-		t.Fatalf("saved file: %v (matches capture: %v)", err, string(saved) == string(e.snapshots.data))
-	}
-}
-
-func TestSnapshotNeverOverwritesAnExistingFile(t *testing.T) {
-	e := newEnv(t)
-	e.windows.current = &notepad
-	writeFile(t, filepath.Join(e.snapshotDir, "taken.png"), "precious")
-
-	w := e.do("GET", "/api/snapshot?out=taken.png", "")
-	if w.Code != http.StatusConflict {
-		t.Fatalf("GET = %d %s, want 409", w.Code, w.Body.String())
-	}
-	if saved, _ := os.ReadFile(filepath.Join(e.snapshotDir, "taken.png")); string(saved) != "precious" {
-		t.Fatalf("existing file was overwritten: %q", saved)
-	}
-}
-
-func TestSnapshotDoesNotSaveACorruptCapture(t *testing.T) {
-	e := newEnv(t)
-	e.windows.current = &notepad
-	e.snapshots.data = []byte("this is not a png")
-
-	if w := e.do("GET", "/api/snapshot?out=bad.png", ""); w.Code != http.StatusBadGateway {
-		t.Fatalf("GET = %d, want 502", w.Code)
-	}
-	if _, err := os.Stat(filepath.Join(e.snapshotDir, "bad.png")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("corrupt capture was saved: %v", err)
-	}
-	// Without out= the bytes are passed through untouched.
-	if w := e.do("GET", "/api/snapshot", ""); w.Code != http.StatusOK {
-		t.Fatalf("pass-through = %d", w.Code)
+	if calls := e.snapshots.calls(); len(calls) != 0 {
+		t.Fatalf("capture ran for a refused request: %v", calls)
 	}
 }
 

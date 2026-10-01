@@ -3,8 +3,6 @@ package httpapi_test
 import (
 	"bytes"
 	"context"
-	"image"
-	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -92,12 +90,11 @@ func (f *fakeSnapshotter) calls() []uint64 {
 // env is a server wired to fakes, with a client directory and snapshot
 // directory inside a temporary base directory.
 type env struct {
-	server      *httpapi.Server
-	windows     *fakeWindows
-	snapshots   *fakeSnapshotter
-	base        string
-	clientDir   string
-	snapshotDir string
+	server    *httpapi.Server
+	windows   *fakeWindows
+	snapshots *fakeSnapshotter
+	base      string
+	clientDir string
 }
 
 type envOption func(*httpapi.Options)
@@ -110,21 +107,19 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	t.Helper()
 	base := t.TempDir()
 	e := &env{
-		windows:     &fakeWindows{},
-		snapshots:   &fakeSnapshotter{data: pngBytes(t, 3, 2)},
-		base:        base,
-		clientDir:   filepath.Join(base, "web"),
-		snapshotDir: filepath.Join(base, "snapshots"),
+		windows:   &fakeWindows{},
+		snapshots: &fakeSnapshotter{data: []byte("fake-png-bytes")},
+		base:      base,
+		clientDir: filepath.Join(base, "web"),
 	}
 	if err := os.Mkdir(e.clientDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	options := httpapi.Options{
-		Addr:        "127.0.0.1:8443",
-		ClientDir:   e.clientDir,
-		SnapshotDir: e.snapshotDir,
-		Windows:     e.windows,
-		Snapshots:   e.snapshots,
+		Addr:      "127.0.0.1:8443",
+		ClientDir: e.clientDir,
+		Windows:   e.windows,
+		Snapshots: e.snapshots,
 	}
 	for _, apply := range opts {
 		apply(&options)
@@ -163,14 +158,4 @@ func (e *env) doBody(method, target, origin string, body []byte) *httptest.Respo
 	w := httptest.NewRecorder()
 	e.server.Handler().ServeHTTP(w, r)
 	return w
-}
-
-// pngBytes returns a valid PNG of the given size.
-func pngBytes(t *testing.T, width, height int) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
 }

@@ -115,15 +115,16 @@ Invoke-RestMethod 'http://127.0.0.1:8443/api/windows'
 Invoke-RestMethod 'http://127.0.0.1:8443/api/target-window' -Method Post -ContentType 'application/json' -Body '{"handle":657830}'
 ```
 
-`GET /api/snapshot` returns PNG bytes for the selected target; optional `hwnd` selects a handle for that request. Optional `out=window.png` saves a **new simple PNG filename** within `snapshots/` beside the release/repository root and returns its relative path and dimensions. Existing files are not overwritten. Absolute paths, directories, traversal and Windows device names are rejected. One snapshot helper runs at a time, with a 10-second execution timeout.
+`GET /api/snapshot` returns PNG bytes for the selected target. The host never writes snapshots to disk and cannot capture a window other than the selected one; the `out` and `hwnd` parameters are refused. One snapshot helper runs at a time, with a 10-second execution timeout.
+
+To save a snapshot of any window to a file, use the CaptureProbe command line:
 
 ```powershell
 Invoke-WebRequest 'http://127.0.0.1:8443/api/snapshot' -OutFile local-copy.png
-Invoke-RestMethod 'http://127.0.0.1:8443/api/snapshot?out=window.png'
 dotnet run --project window-capture/apps/CaptureProbe/CaptureProbe.csproj -- --hwnd 657830 --out 'D:\captures\probe.png'
 ```
 
-CLI snapshots retain local caller-selected paths. Streaming uses a single long-lived capture process and encoder, never one process per frame.
+CLI snapshots use local caller-selected paths. Streaming uses a single long-lived capture process and encoder, never one process per frame.
 
 ## Current distribution status
 

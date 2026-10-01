@@ -29,6 +29,6 @@ web-ui/dist/
 *.pdb
 window-capture/capture-test.png
 
-# Distribution and server-side snapshots
+# Distribution output and local snapshot captures
 dist/
 snapshots/
