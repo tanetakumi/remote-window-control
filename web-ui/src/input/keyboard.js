@@ -1,12 +1,14 @@
 import { createListenerTracker } from "../lib/events.js";
 
 // 1024 Unicode code points fit the host's 4096-byte text limit, including emoji.
-function* textCommands(text) {
+function* textCommands(text, shiftNewline) {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   for (const [index, line] of lines.entries()) {
     if (index) {
+      if (shiftNewline) yield { type: "input.keyDown", key: "Shift" };
       yield { type: "input.keyDown", key: "Enter" };
       yield { type: "input.keyUp", key: "Enter" };
+      if (shiftNewline) yield { type: "input.keyUp", key: "Shift" };
     }
     const chars = Array.from(line);
     for (let offset = 0; offset < chars.length; offset += 1024) {
@@ -17,7 +19,7 @@ function* textCommands(text) {
 
 export function attachTextInput({
   buttonElement, dialogElement, inputElement, closeButton, sendButton,
-  restoreButton, errorElement, draft, onOpenChange,
+  restoreButton, newlineButton, errorElement, draft, onOpenChange,
 }, sendControl) {
   const { listen, cleanup: removeListeners } = createListenerTracker();
   let active = false;
@@ -33,6 +35,8 @@ export function attachTextInput({
     sendButton.disabled = disposed || !active || composing || sending || inputElement.value.length === 0;
     if (errorElement.textContent !== draft.error) errorElement.textContent = draft.error;
     errorElement.hidden = !draft.error;
+    newlineButton.classList.toggle("active", !!draft.shiftNewline);
+    newlineButton.setAttribute("aria-pressed", String(!!draft.shiftNewline));
     restoreButton.hidden = !draft.error || !draft.lastSent || inputElement.value.length > 0;
   };
   const positionDialog = () => {
@@ -109,6 +113,10 @@ export function attachTextInput({
     draft.text = inputElement.value;
     syncUi();
   });
+  listen(newlineButton, "click", () => {
+    draft.shiftNewline = !draft.shiftNewline;
+    syncUi();
+  });
   listen(restoreButton, "click", () => {
     inputElement.value = draft.text = draft.lastSent;
     syncUi();
@@ -121,7 +129,7 @@ export function attachTextInput({
     draft.error = "";
     syncUi();
     try {
-      for (const command of textCommands(draft.text)) {
+      for (const command of textCommands(draft.text, draft.shiftNewline)) {
         if (disposed || !sendControl(command)) {
           reportError("Text may have been partially sent. Check the remote window before retrying.");
           return;

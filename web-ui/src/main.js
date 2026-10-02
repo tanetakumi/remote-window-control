@@ -34,7 +34,7 @@ let keepaliveBusy = false;
 let cleanupRemote = () => {};
 let connectionAbort;
 // Keep only the current target's draft in memory, including across reconnects.
-let textDraft = { target: null, text: "", lastSent: "", error: "" };
+let textDraft = { target: null, text: "", lastSent: "", error: "", shiftNewline: false };
 
 function getAppIconSvg() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"></rect><line x1="8" x2="16" y1="21" y2="21"></line><line x1="12" x2="12" y1="17" y2="21"></line></svg>`;
@@ -168,7 +168,7 @@ async function connectToWindow(target) {
   try {
     await setTargetWindow(target.handle);
     if (textDraft.target !== target.handle) {
-      textDraft = { target: target.handle, text: "", lastSent: "", error: "" };
+      textDraft = { target: target.handle, text: "", lastSent: "", error: "", shiftNewline: false };
     }
     selectScreen.hidden = true;
     remoteScreen.hidden = false;
@@ -235,6 +235,7 @@ async function startRemoteControl() {
       closeButton: document.querySelector("#close-text-input"),
       sendButton: document.querySelector("#send-text-input"),
       restoreButton: document.querySelector("#restore-text-input"),
+      newlineButton: document.querySelector("#newline-mode"),
       errorElement: document.querySelector("#text-input-error"),
       draft: textDraft,
       onOpenChange: (active) => {

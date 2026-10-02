@@ -38,6 +38,7 @@ function createEditor(draft = { text: "", lastSent: "", error: "" }, sendControl
   const controls = {
     buttonElement: new Element(), dialogElement: new Element(), inputElement: new Element(),
     closeButton: new Element(), sendButton: new Element(), restoreButton: new Element(),
+    newlineButton: new Element(),
     errorElement: new Element(), draft,
   };
   const sent = [];
@@ -116,6 +117,23 @@ test("newlines are ordered between text chunks without appending an extra Enter"
     { type: "input.keyDown", key: "Enter" }, { type: "input.keyUp", key: "Enter" },
     { type: "input.keyDown", key: "Enter" }, { type: "input.keyUp", key: "Enter" },
     { type: "input.text", text: "world" },
+  ]);
+  editor.cleanup();
+});
+
+test("Shift newline mode wraps each line break in Shift", () => {
+  const { controls, sent, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  emit(controls.newlineButton, "click");
+  assert.equal(controls.newlineButton.attributes["aria-pressed"], "true");
+  edit(controls, "a\nb");
+  emit(controls.sendButton, "click");
+  assert.deepEqual(sent, [
+    { type: "input.text", text: "a" },
+    { type: "input.keyDown", key: "Shift" },
+    { type: "input.keyDown", key: "Enter" }, { type: "input.keyUp", key: "Enter" },
+    { type: "input.keyUp", key: "Shift" },
+    { type: "input.text", text: "b" },
   ]);
   editor.cleanup();
 });
