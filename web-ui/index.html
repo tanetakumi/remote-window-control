@@ -73,6 +73,11 @@
             <output id="settings-crf-value" for="settings-crf"></output>
             <input id="settings-crf" type="range" min="0" max="63" step="1" />
           </div>
+          <div class="settings-field settings-slider">
+            <label for="settings-scale">Max window scale (pixels per CSS pixel)</label>
+            <output id="settings-scale-value" for="settings-scale"></output>
+            <input id="settings-scale" type="range" min="0.5" max="4" step="0.25" />
+          </div>
           <button id="settings-save" type="button" disabled>Save</button>
         </div>
       </main>
@@ -146,6 +151,20 @@
             </button>
             <button id="send-backspace" type="button" aria-label="Send Backspace to remote window" title="Backspace" disabled>BS</button>
             <button id="send-shift-enter" type="button" aria-label="Send Shift+Enter to remote window" title="Shift+Enter (new line)" disabled>⇧↵</button>
+            <div class="arrow-pad">
+              <button id="send-arrow-up" type="button" aria-label="Send ArrowUp to remote window" title="Arrow Up" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+              </button>
+              <button id="send-arrow-left" type="button" aria-label="Send ArrowLeft to remote window" title="Arrow Left" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+              </button>
+              <button id="send-arrow-down" type="button" aria-label="Send ArrowDown to remote window" title="Arrow Down" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <button id="send-arrow-right" type="button" aria-label="Send ArrowRight to remote window" title="Arrow Right" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+              </button>
+            </div>
           </div>
           <div id="remote-notice" role="status" hidden>
             <span id="remote-notice-message"></span>

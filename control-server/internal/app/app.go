@@ -47,12 +47,14 @@ func Run(cfg config.Config) error {
 		log.Printf("capture measurement stats=%s", cfg.CaptureStats)
 	}
 	selection := window.NewSelection(probe)
-	dispatcher := input.NewDispatcher(input.NewMessageInjector(selection))
 
 	settings, err := config.OpenSettings(cfg.SettingsPath)
 	if err != nil {
 		return err
 	}
+	dispatcher := input.NewDispatcher(input.NewMessageInjector(selection, func() float64 {
+		return settings.Get().MaxScale
+	}))
 
 	hub := session.NewHub(session.Options{
 		Dispatcher: dispatcher,

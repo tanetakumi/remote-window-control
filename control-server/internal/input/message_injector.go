@@ -56,20 +56,22 @@ func (win32Keys) SetClipboard(text string) error                 { return win32.
 // release follows it there to stay in order. Text always needs the foreground.
 type MessageInjector struct {
 	target   TargetSource
+	maxScale func() float64
 	keys     Keys
 	buttons  win32.Buttons // buttons currently held, reported with pointer moves
 	realKeys bool          // keys are being sent as real input until Shift is released
 }
 
 // NewMessageInjector returns an injector that resolves the target window on
-// every call, so it follows target changes.
-func NewMessageInjector(target TargetSource) *MessageInjector {
-	return NewMessageInjectorWithKeys(target, win32Keys{})
+// every call, so it follows target changes. maxScale is read on every viewport
+// resize and gives the largest number of window pixels per CSS pixel.
+func NewMessageInjector(target TargetSource, maxScale func() float64) *MessageInjector {
+	return NewMessageInjectorWithKeys(target, maxScale, win32Keys{})
 }
 
 // NewMessageInjectorWithKeys is NewMessageInjector with a custom key delivery.
-func NewMessageInjectorWithKeys(target TargetSource, keys Keys) *MessageInjector {
-	return &MessageInjector{target: target, keys: keys}
+func NewMessageInjectorWithKeys(target TargetSource, maxScale func() float64, keys Keys) *MessageInjector {
+	return &MessageInjector{target: target, maxScale: maxScale, keys: keys}
 }
 
 func (m *MessageInjector) Move(x, y float64) error {
@@ -128,15 +130,11 @@ func (m *MessageInjector) Scroll(deltaY, x, y float64) error {
 }
 
 // ResizeViewport resizes the target window so its client area matches the
-// viewport of the controlling browser, in device pixels.
+// viewport of the controlling browser in device pixels, at most maxScale
+// pixels per CSS pixel.
 func (m *MessageInjector) ResizeViewport(c Command) error {
-	scale := c.DevicePixelRatio
-	if scale <= 0 {
-		scale = 1
-	}
-	width := int(float64(c.Width) * scale)
-	height := int(float64(c.Height) * scale)
-	if width <= 0 || height <= 0 {
+	width, height, ok := win32.ViewportPixels(c.Width, c.Height, c.DevicePixelRatio, m.maxScale())
+	if !ok {
 		return nil
 	}
 	hwnd, err := m.handle()

@@ -24,11 +24,17 @@ type Settings struct {
 	// CRF is the video quality, minCRF to maxCRF; lower is better and larger.
 	// A new value applies to the next connection.
 	CRF int `json:"crf"`
+	// MaxScale is the most window pixels per CSS pixel of the controlling
+	// browser's viewport, minMaxScale to maxMaxScale. The window is sized to the
+	// viewport times the browser's device pixel ratio, limited to this, so a
+	// lower value gives a smaller window and less video data. A new value
+	// applies from the next viewport change.
+	MaxScale float64 `json:"maxScale"`
 }
 
 // DefaultSettings returns the settings used while config.json does not exist.
 func DefaultSettings() Settings {
-	return Settings{FPS: media.DefaultFPS, CRF: media.DefaultCRF}
+	return Settings{FPS: media.DefaultFPS, CRF: media.DefaultCRF, MaxScale: DefaultMaxScale}
 }
 
 // Validate reports whether the settings are within their allowed ranges.
@@ -38,6 +44,9 @@ func (s Settings) Validate() error {
 	}
 	if s.CRF < minCRF || s.CRF > maxCRF {
 		return fmt.Errorf("%w: crf must be an integer from %d to %d", ErrInvalidSettings, minCRF, maxCRF)
+	}
+	if !(s.MaxScale >= minMaxScale && s.MaxScale <= maxMaxScale) {
+		return fmt.Errorf("%w: maxScale must be a number from %g to %g", ErrInvalidSettings, minMaxScale, maxMaxScale)
 	}
 	return nil
 }

@@ -29,7 +29,13 @@ const (
 	// minCRF and maxCRF bound the libvpx-vp9 constant rate factor.
 	minCRF = 0
 	maxCRF = 63
+	// minMaxScale and maxMaxScale bound Settings.MaxScale.
+	minMaxScale = 0.5
+	maxMaxScale = 4.0
 )
+
+// DefaultMaxScale is Settings.MaxScale until it is changed.
+const DefaultMaxScale = 2
 
 // Capture measurement modes (SHARE_APP_CAPTURE_STATS).
 const (

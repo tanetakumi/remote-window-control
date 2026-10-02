@@ -56,9 +56,33 @@ func FitClientSize(desiredWidth, desiredHeight, maxWidth, maxHeight int) (int, i
 	return evenDimension(width), evenDimension(height)
 }
 
+// ViewportPixels converts a viewport of cssWidth x cssHeight CSS pixels into
+// the client size to give the window. Each CSS pixel becomes devicePixelRatio
+// window pixels, but never more than maxScale, so a high-density screen cannot
+// ask for more pixels than the user allows. A ratio that is not positive counts
+// as 1. The result is capped at the supported maximum dimension before
+// converting to integers. It reports false when either rounded dimension
+// has no pixels.
+func ViewportPixels(cssWidth, cssHeight int, devicePixelRatio, maxScale float64) (width, height int, ok bool) {
+	if cssWidth <= 0 || cssHeight <= 0 {
+		return 0, 0, false
+	}
+	scale := devicePixelRatio
+	if scale <= 0 {
+		scale = 1
+	}
+	scale = min(scale, maxScale)
+	w := math.Round(float64(cssWidth) * scale)
+	h := math.Round(float64(cssHeight) * scale)
+	if !(w >= 1 && h >= 1) {
+		return 0, 0, false
+	}
+	return int(min(w, float64(maxClientDimension))), int(min(h, float64(maxClientDimension))), true
+}
+
 // PlanClientResize returns the outer window rectangle that gives the window a
-// client area at 90% of the requested size after fitting to the monitor work
-// area, subject to the minimum size and even dimensions. window and client
+// client area of the requested size after fitting to the monitor work area,
+// subject to the minimum size and even dimensions. window and client
 // are the current outer and client rectangles; the difference between them
 // is the frame. The window is moved back inside work when it is known.
 // Pass nil when the work area is unknown.
@@ -70,10 +94,6 @@ func PlanClientResize(window, client Rect, work *Rect, wantWidth, wantHeight int
 		wantWidth, wantHeight = FitClientSize(wantWidth, wantHeight,
 			int(work.Width())-frameWidth, int(work.Height())-frameHeight)
 	}
-	// Reduce the fitted size so oversized portrait requests also become
-	// smaller. This affects window geometry only, never input coordinates.
-	wantWidth = int(math.Round(float64(clampDimension(wantWidth)) * 0.9))
-	wantHeight = int(math.Round(float64(clampDimension(wantHeight)) * 0.9))
 	width := clampDimension(evenDimension(wantWidth) + frameWidth)
 	height := clampDimension(evenDimension(wantHeight) + frameHeight)
 

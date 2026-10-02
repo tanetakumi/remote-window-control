@@ -18,6 +18,8 @@ type fakeTarget struct {
 
 func (f fakeTarget) CurrentHandle() (uint64, bool) { return f.handle, f.ok }
 
+func maxScale() float64 { return 2 }
+
 func TestMessageInjectorRequiresATargetWindow(t *testing.T) {
 	targets := map[string]input.TargetSource{
 		"nil target":         nil,
@@ -26,7 +28,7 @@ func TestMessageInjectorRequiresATargetWindow(t *testing.T) {
 	}
 	for name, target := range targets {
 		t.Run(name, func(t *testing.T) {
-			m := input.NewMessageInjector(target)
+			m := input.NewMessageInjector(target, maxScale)
 			calls := map[string]func() error{
 				"Move":                func() error { return m.Move(0.5, 0.5) },
 				"Tap":                 func() error { return m.Tap("left", 0.5, 0.5) },
@@ -48,7 +50,7 @@ func TestMessageInjectorRequiresATargetWindow(t *testing.T) {
 }
 
 func TestMessageInjectorIgnoresInputItCannotDeliver(t *testing.T) {
-	m := input.NewMessageInjector(fakeTarget{})
+	m := input.NewMessageInjector(fakeTarget{}, maxScale)
 	// Printable characters arrive as text, so a bare key press is dropped
 	// rather than reported as an error.
 	if err := m.KeyDown(input.Command{Key: "a"}); err != nil {
@@ -58,7 +60,11 @@ func TestMessageInjectorIgnoresInputItCannotDeliver(t *testing.T) {
 		t.Errorf("KeyUp(printable) = %v", err)
 	}
 	// A viewport with no area has nothing to resize to.
-	for _, c := range []input.Command{{}, {Width: 100}, {Height: 100}} {
+	for _, c := range []input.Command{
+		{}, {Width: 100}, {Height: 100},
+		{Width: 1, Height: 100, DevicePixelRatio: 0.1},
+		{Width: 100, Height: 1, DevicePixelRatio: 0.1},
+	} {
 		if err := m.ResizeViewport(c); err != nil {
 			t.Errorf("ResizeViewport(%+v) = %v", c, err)
 		}
@@ -126,7 +132,7 @@ func pressShiftEnter(t *testing.T, m *input.MessageInjector) {
 // Shift press to its release.
 func TestShiftEnterIsSentAsRealInputToAForegroundTarget(t *testing.T) {
 	keys := &recordingKeys{foreground: true}
-	pressShiftEnter(t, input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, keys))
+	pressShiftEnter(t, input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, maxScale, keys))
 	want := []string{"send shift down", "send enter down", "send enter up", "send shift up"}
 	if !slices.Equal(keys.calls, want) {
 		t.Fatalf("calls = %v, want %v", keys.calls, want)
@@ -135,7 +141,7 @@ func TestShiftEnterIsSentAsRealInputToAForegroundTarget(t *testing.T) {
 
 func TestKeysArePostedWhenTheTargetIsNotInTheForeground(t *testing.T) {
 	keys := &recordingKeys{}
-	pressShiftEnter(t, input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, keys))
+	pressShiftEnter(t, input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, maxScale, keys))
 	want := []string{"post shift down", "post enter down", "post enter up", "post shift up"}
 	if !slices.Equal(keys.calls, want) {
 		t.Fatalf("calls = %v, want %v", keys.calls, want)
@@ -144,7 +150,7 @@ func TestKeysArePostedWhenTheTargetIsNotInTheForeground(t *testing.T) {
 
 func TestKeysAreOnlyRealInputWhileShiftIsHeld(t *testing.T) {
 	keys := &recordingKeys{foreground: true}
-	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, keys)
+	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, maxScale, keys)
 	if err := m.KeyDown(input.Command{Key: "Enter"}); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +176,7 @@ func (s *switchableTarget) CurrentHandle() (uint64, bool) { return s.handle, s.h
 func TestRealShiftIsReleasedAfterTheTargetIsGone(t *testing.T) {
 	keys := &recordingKeys{foreground: true}
 	target := &switchableTarget{handle: 7}
-	m := input.NewMessageInjectorWithKeys(target, keys)
+	m := input.NewMessageInjectorWithKeys(target, maxScale, keys)
 	if err := m.KeyDown(input.Command{Key: "Shift"}); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +195,7 @@ func TestRealShiftIsReleasedAfterTheTargetIsGone(t *testing.T) {
 // its input method.
 func TestTextIsPastedFromTheClipboardWithRealCtrlV(t *testing.T) {
 	keys := &recordingKeys{}
-	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, keys)
+	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, maxScale, keys)
 	if err := m.Text("日本語\nline 2\r\nline 3"); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +211,7 @@ func TestTextIsPastedFromTheClipboardWithRealCtrlV(t *testing.T) {
 func TestTextIsNotSentWhenTheTargetCannotBeActivated(t *testing.T) {
 	denied := errors.New("denied")
 	keys := &recordingKeys{activate: denied}
-	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, keys)
+	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, maxScale, keys)
 	if err := m.Text("hello"); !errors.Is(err, denied) {
 		t.Fatalf("Text = %v, want %v", err, denied)
 	}

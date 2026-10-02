@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func TestMissingSettingsFileGivesTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := store.Get(), (config.Settings{FPS: 8, CRF: 31}); got != want {
+	if got, want := store.Get(), (config.Settings{FPS: 8, CRF: 31, MaxScale: 2}); got != want {
 		t.Fatalf("settings = %+v, want %+v", got, want)
 	}
 }
@@ -43,7 +44,7 @@ func TestSavedSettingsSurviveReopening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := config.Settings{FPS: 15, CRF: 20}
+	saved := config.Settings{FPS: 15, CRF: 20, MaxScale: 1.5}
 	if err := store.Set(saved); err != nil {
 		t.Fatal(err)
 	}
@@ -70,10 +71,14 @@ func TestInvalidSettingsAreRejectedAndNotSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, bad := range []config.Settings{
-		{FPS: 0, CRF: 31},
-		{FPS: 31, CRF: 31},
-		{FPS: 8, CRF: -1},
-		{FPS: 8, CRF: 64},
+		{FPS: 0, CRF: 31, MaxScale: 2},
+		{FPS: 31, CRF: 31, MaxScale: 2},
+		{FPS: 8, CRF: -1, MaxScale: 2},
+		{FPS: 8, CRF: 64, MaxScale: 2},
+		{FPS: 8, CRF: 31, MaxScale: 0},
+		{FPS: 8, CRF: 31, MaxScale: 0.25},
+		{FPS: 8, CRF: 31, MaxScale: 4.5},
+		{FPS: 8, CRF: 31, MaxScale: math.NaN()},
 	} {
 		if err := store.Set(bad); !errors.Is(err, config.ErrInvalidSettings) {
 			t.Fatalf("Set(%+v) = %v, want ErrInvalidSettings", bad, err)
@@ -92,7 +97,7 @@ func TestFailedSaveKeepsTheCurrentSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = store.Set(config.Settings{FPS: 12, CRF: 31})
+	err = store.Set(config.Settings{FPS: 12, CRF: 31, MaxScale: 2})
 	if err == nil || errors.Is(err, config.ErrInvalidSettings) {
 		t.Fatalf("Set = %v, want a write error", err)
 	}
@@ -110,7 +115,7 @@ func TestSettingsFileFieldsDefaultWhenOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := store.Get(), (config.Settings{FPS: 12, CRF: 31}); got != want {
+	if got, want := store.Get(), (config.Settings{FPS: 12, CRF: 31, MaxScale: 2}); got != want {
 		t.Fatalf("settings = %+v, want %+v", got, want)
 	}
 }
@@ -121,6 +126,7 @@ func TestBadSettingsFileFailsAndNamesTheFile(t *testing.T) {
 		"unknown field": `{"fps": 8, "fpz": 9}`,
 		"fps range":     `{"fps": 99}`,
 		"crf range":     `{"crf": 64}`,
+		"scale range":   `{"maxScale": 5}`,
 	} {
 		path := settingsPath(t)
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

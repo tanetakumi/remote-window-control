@@ -1,7 +1,7 @@
 // The host stores the settings; this screen loads them on open and writes
 // them back when Save is pressed.
 export function attachSettingsScreen({
-  fpsInput, fpsValue, crfInput, crfValue, saveButton, statusElement,
+  fpsInput, fpsValue, crfInput, crfValue, scaleInput, scaleValue, saveButton, statusElement,
 }, { load, save }) {
   let busy = false;
   let ready = false;
@@ -16,21 +16,27 @@ export function attachSettingsScreen({
   const showValues = () => {
     fpsValue.textContent = fpsInput.value;
     crfValue.textContent = crfInput.value;
+    scaleValue.textContent = scaleInput.value;
   };
   const apply = (settings) => {
     fpsInput.value = String(settings.fps);
     crfInput.value = String(settings.crf);
+    scaleInput.value = String(settings.maxScale);
     showValues();
   };
 
-  for (const slider of [fpsInput, crfInput]) slider.addEventListener("input", showValues);
+  for (const slider of [fpsInput, crfInput, scaleInput]) slider.addEventListener("input", showValues);
   saveButton.addEventListener("click", async () => {
     if (busy || !ready) return;
     busy = true;
     render();
     try {
-      apply(await save({ fps: Number(fpsInput.value), crf: Number(crfInput.value) }));
-      setStatus("Saved. New FPS and CRF values apply from the next connection.");
+      apply(await save({
+        fps: Number(fpsInput.value),
+        crf: Number(crfInput.value),
+        maxScale: Number(scaleInput.value),
+      }));
+      setStatus("Saved. FPS and CRF apply from the next connection; max window scale applies from the next viewport change or connection.");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Saving failed", true);
     } finally {

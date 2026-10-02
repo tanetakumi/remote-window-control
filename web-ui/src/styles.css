@@ -842,6 +842,7 @@ body {
   left: 0;
   z-index: 5;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   max-width: calc(100% - 16px - var(--palette-safe-left) - var(--palette-safe-right));
@@ -869,19 +870,41 @@ body {
   touch-action: none;
 }
 
+/* Inverted-T layout like a physical keyboard: Up above Down, Left and Right beside it. */
+#special-keys-palette .arrow-pad {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: repeat(3, 44px);
+  grid-template-areas:
+    ". up ."
+    "left down right";
+  gap: 6px;
+  margin-left: 6px;
+}
+
+#send-arrow-up { grid-area: up; }
+#send-arrow-left { grid-area: left; }
+#send-arrow-down { grid-area: down; }
+#send-arrow-right { grid-area: right; }
+
 #special-keys-palette #move-special-keys-palette {
-  border-color: transparent;
+  align-self: stretch;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--text-secondary);
   cursor: grab;
 }
 
-#special-keys-palette #move-special-keys-palette:hover:not(:disabled) {
-  background: var(--bg-surface-elevated);
+#special-keys-palette #move-special-keys-palette:hover:not(:disabled),
+#special-keys-palette #move-special-keys-palette:active:not(:disabled) {
+  background: transparent;
   color: var(--text-primary);
 }
 
 #special-keys-palette #move-special-keys-palette svg {
+  width: 14px;
+  height: 28px;
   fill: currentColor;
   stroke: none;
 }

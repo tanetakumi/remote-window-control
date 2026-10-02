@@ -1,6 +1,7 @@
 package win32_test
 
 import (
+	"math"
 	"testing"
 
 	"share-app-host/internal/win32"
@@ -93,15 +94,46 @@ func TestFitClientSize(t *testing.T) {
 	}
 }
 
+func TestViewportPixels(t *testing.T) {
+	tests := []struct {
+		name          string
+		cssW, cssH    int
+		dpr, maxScale float64
+		wantW, wantH  int
+		wantOK        bool
+	}{
+		{"device pixel ratio below the limit", 390, 844, 2, 3, 780, 1688, true},
+		{"limit caps the ratio", 390, 844, 3, 2, 780, 1688, true},
+		{"fractional limit rounds", 390, 844, 3, 1.5, 585, 1266, true},
+		{"limit below one shrinks the window", 400, 800, 1, 0.5, 200, 400, true},
+		{"missing ratio counts as one", 390, 844, 0, 2, 390, 844, true},
+		{"negative ratio counts as one", 390, 844, -2, 2, 390, 844, true},
+		{"landscape", 844, 390, 3, 2, 1688, 780, true},
+		{"oversized dimensions stay within the supported range", math.MaxInt, math.MaxInt, 3, 2, 4096, 4096, true},
+		{"rounded width has no pixels", 1, 844, 0.1, 2, 0, 0, false},
+		{"rounded height has no pixels", 390, 1, 0.1, 2, 0, 0, false},
+		{"no width", 0, 844, 3, 2, 0, 0, false},
+		{"no height", 390, 0, 3, 2, 0, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w, h, ok := win32.ViewportPixels(tt.cssW, tt.cssH, tt.dpr, tt.maxScale)
+			if w != tt.wantW || h != tt.wantH || ok != tt.wantOK {
+				t.Fatalf("ViewportPixels = %dx%d %v, want %dx%d %v", w, h, ok, tt.wantW, tt.wantH, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestPlanClientResize(t *testing.T) {
 	// 800x600 outer window with a 784x561 client area: 16x39 of frame.
 	window := win32.Rect{Left: 100, Top: 100, Right: 900, Bottom: 700}
 	client := win32.Rect{Right: 784, Bottom: 561}
 	work := win32.Rect{Left: 0, Top: 0, Right: 1920, Bottom: 1040}
 
-	t.Run("uses 90 percent of the client size and adds the unscaled frame", func(t *testing.T) {
+	t.Run("gives the client the requested size and adds the frame", func(t *testing.T) {
 		got := win32.PlanClientResize(window, client, &work, 1000, 700)
-		want := win32.Rect{Left: 100, Top: 100, Right: 100 + 916, Bottom: 100 + 669}
+		want := win32.Rect{Left: 100, Top: 100, Right: 100 + 1016, Bottom: 100 + 739}
 		if got != want {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
@@ -109,16 +141,15 @@ func TestPlanClientResize(t *testing.T) {
 	t.Run("moves the window back inside the work area", func(t *testing.T) {
 		right := win32.Rect{Left: 1500, Top: 800, Right: 2300, Bottom: 1400}
 		got := win32.PlanClientResize(right, client, &work, 1000, 700)
-		want := win32.Rect{Left: 1920 - 916, Top: 1040 - 669, Right: 1920, Bottom: 1040}
+		want := win32.Rect{Left: 1920 - 1016, Top: 1040 - 739, Right: 1920, Bottom: 1040}
 		if got != want {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
 	})
 	t.Run("shrinks oversized requests to the work area", func(t *testing.T) {
 		got := win32.PlanClientResize(window, client, &work, 4000, 3000)
-		// The request first fits to 1334x1000, then shrinks to 1200x900.
-		if got.Width()-16 != 1200 || got.Height()-39 != 900 {
-			t.Fatalf("client size = %dx%d, want 1200x900", got.Width()-16, got.Height()-39)
+		if got.Width()-16 != 1334 || got.Height()-39 != 1000 {
+			t.Fatalf("client size = %dx%d, want 1334x1000", got.Width()-16, got.Height()-39)
 		}
 		if got.Width() > work.Width() || got.Height() > work.Height() {
 			t.Fatalf("result %+v exceeds work area %+v", got, work)
@@ -134,7 +165,7 @@ func TestPlanClientResize(t *testing.T) {
 	})
 	t.Run("keeps the position when the work area is unknown", func(t *testing.T) {
 		got := win32.PlanClientResize(window, client, nil, 1000, 700)
-		want := win32.Rect{Left: 100, Top: 100, Right: 100 + 916, Bottom: 100 + 669}
+		want := win32.Rect{Left: 100, Top: 100, Right: 100 + 1016, Bottom: 100 + 739}
 		if got != want {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}

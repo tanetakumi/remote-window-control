@@ -78,14 +78,15 @@ The optional `.env` file sits beside `share-host.exe`. Environment variables ove
 
 ### Settings page
 
-The gear button next to **Refresh** in the web UI opens a settings page with two options, shared by every device that connects:
+The gear button next to **Refresh** in the web UI opens a settings page with three options, shared by every device that connects:
 
 | Setting | Default | Description |
 | --- | --- | --- |
 | Video FPS | `8` | Video encode rate in frames per second while the window changes, 1 to 30. Applies from the next connection. |
 | Video quality (CRF) | `31` | VP9 constant rate factor, 0 to 63. Lower is sharper and uses more bandwidth; the `6M` bitrate cap stays fixed. Applies from the next connection. |
+| Max window scale | `2` | Window pixels per CSS pixel of the browser viewport, 0.5 to 4 in steps of 0.25. The host sizes the shared window to the viewport times the device's pixel ratio, limited to this value, then fits it to the monitor's work area. Lower values give a smaller window (larger-looking UI) and less video data. Applies from the next connection or viewport change. |
 
-**Save** writes them to `config.json` beside `share-host.exe` (the repository root in a checkout), for example `{"fps": 8, "crf": 31}`. The file is optional; the host fails to start if it exists but is malformed or out of range.
+**Save** writes them to `config.json` beside `share-host.exe` (the repository root in a checkout), for example `{"fps": 8, "crf": 31, "maxScale": 2}`. The file is optional; the host fails to start if it exists but is malformed or out of range.
 
 A disconnected media connection gets a 5-second grace period to recover. Input commands are buffered while the send buffer is full; a backlog lasting 5 seconds or exceeding 256 queued commands ends the connection to avoid applying stale input.
 

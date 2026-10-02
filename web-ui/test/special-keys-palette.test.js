@@ -8,8 +8,8 @@ class Element extends EventTarget {
   style = {};
   attributes = {};
   captured = new Set();
-  offsetWidth = 180;
-  offsetHeight = 58;
+  offsetWidth = 314;
+  offsetHeight = 108;
   rect = { left: 0, top: 55, width: 390, height: 789 };
   classList = {
     add() {}, remove() {}, toggle() {},
@@ -36,10 +36,15 @@ function fixture(sendControl) {
   });
   const controls = Object.fromEntries([
     "buttonElement", "paletteElement", "stageElement", "moveHandle", "keyButton", "shiftEnterButton",
+    "arrowUpButton", "arrowLeftButton", "arrowDownButton", "arrowRightButton",
   ].map(name => [name, new Element()]));
   controls.keyButtons = [
     { element: controls.keyButton, keys: ["Backspace"] },
     { element: controls.shiftEnterButton, keys: ["Shift", "Enter"] },
+    { element: controls.arrowUpButton, keys: ["ArrowUp"] },
+    { element: controls.arrowLeftButton, keys: ["ArrowLeft"] },
+    { element: controls.arrowDownButton, keys: ["ArrowDown"] },
+    { element: controls.arrowRightButton, keys: ["ArrowRight"] },
   ];
   controls.stageElement.ownerDocument = { defaultView: view };
   const sent = [];
@@ -92,6 +97,26 @@ test("Shift+Enter holds Shift around Enter and releases in reverse order", () =>
   palette.cleanup();
 });
 
+test("each arrow button sends its own key press and release", () => {
+  const { controls: c, sent, palette } = fixture();
+  const keys = ["ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"];
+  const arrows = [c.arrowUpButton, c.arrowLeftButton, c.arrowDownButton, c.arrowRightButton];
+  emit(c.buttonElement, "click");
+  for (const element of arrows) assert.equal(element.disabled, false);
+  for (const element of arrows) emit(element, "click", { detail: 0 });
+  assert.deepEqual(sent, keys.flatMap(key => [
+    { type: "input.keyDown", key },
+    { type: "input.keyUp", key },
+  ]));
+  emit(c.buttonElement, "click");
+  for (const element of arrows) {
+    assert.equal(element.disabled, true);
+    emit(element, "click");
+  }
+  assert.equal(sent.length, 8);
+  palette.cleanup();
+});
+
 test("text input suspends the palette and retains its position across temporary resizing", () => {
   const { controls: c, view, sent, palette } = fixture();
   emit(c.buttonElement, "click");
@@ -131,14 +156,14 @@ test("dragging tracks one pointer, stays inside the stage, and cancellation neve
   emit(c.moveHandle, "pointermove", { pointerId: 2, clientX: 500, clientY: 500 });
   assert.equal(c.paletteElement.style.transform, initial);
   emit(c.moveHandle, "pointermove", { pointerId: 1, clientX: -1000, clientY: 2000 });
-  assert.equal(c.paletteElement.style.transform, "translate3d(8px, 723px, 0)");
+  assert.equal(c.paletteElement.style.transform, "translate3d(8px, 673px, 0)");
   emit(c.moveHandle, "pointercancel", { pointerId: 1 });
   assert.equal(c.moveHandle.captured.size, 0);
   emit(c.moveHandle, "pointermove", { pointerId: 1, clientX: 100, clientY: 100 });
-  assert.equal(c.paletteElement.style.transform, "translate3d(8px, 723px, 0)");
+  assert.equal(c.paletteElement.style.transform, "translate3d(8px, 673px, 0)");
   const arrow = emit(c.moveHandle, "keydown", { key: "ArrowRight" });
   assert.equal(arrow.defaultPrevented, true);
-  assert.equal(c.paletteElement.style.transform, "translate3d(18px, 723px, 0)");
+  assert.equal(c.paletteElement.style.transform, "translate3d(18px, 673px, 0)");
   assert.deepEqual(sent, []);
   palette.cleanup();
 });

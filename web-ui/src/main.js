@@ -229,6 +229,10 @@ async function startRemoteControl() {
     keyButtons: [
       { element: document.querySelector("#send-backspace"), keys: ["Backspace"] },
       { element: document.querySelector("#send-shift-enter"), keys: ["Shift", "Enter"] },
+      { element: document.querySelector("#send-arrow-up"), keys: ["ArrowUp"] },
+      { element: document.querySelector("#send-arrow-left"), keys: ["ArrowLeft"] },
+      { element: document.querySelector("#send-arrow-down"), keys: ["ArrowDown"] },
+      { element: document.querySelector("#send-arrow-right"), keys: ["ArrowRight"] },
     ],
   }, remote.sendControl);
   keyboard = attachTextInput(
@@ -295,6 +299,8 @@ const settings = attachSettingsScreen({
   fpsValue: document.querySelector("#settings-fps-value"),
   crfInput: document.querySelector("#settings-crf"),
   crfValue: document.querySelector("#settings-crf-value"),
+  scaleInput: document.querySelector("#settings-scale"),
+  scaleValue: document.querySelector("#settings-scale-value"),
   saveButton: document.querySelector("#settings-save"),
   statusElement: document.querySelector("#settings-status"),
 }, { load: fetchSettings, save: saveSettings });
