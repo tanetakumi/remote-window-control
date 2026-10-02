@@ -49,11 +49,14 @@ func Run(cfg config.Config) error {
 	selection := window.NewSelection(probe)
 	dispatcher := input.NewDispatcher(input.NewMessageInjector(selection))
 
+	encoder := media.DefaultEncoderConfig(cfg.FFmpegPath)
+	encoder.FPS = cfg.FPS
+
 	hub := session.NewHub(session.Options{
 		Dispatcher:    dispatcher,
 		Source:        PreparingSource(media.ProbeSource(probe), PrepareWindow),
 		Target:        selection,
-		Encoder:       media.DefaultEncoderConfig(cfg.FFmpegPath),
+		Encoder:       encoder,
 		StatsInterval: mediaStats,
 	})
 	defer hub.Close()

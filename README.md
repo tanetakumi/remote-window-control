@@ -10,6 +10,7 @@ This repository is a substantially modified fork of [Share App - Remote Window C
 - Control it from a mobile browser with touch gestures.
 - Choose between a relative pointer and direct tapping.
 - Send text from the built-in text editor and use the special-key palette.
+- Keep the session display alive with a loopback RDP connection, so capture continues after a remote viewer disconnects.
 - Connect with WebRTC; no separate mobile app is required.
 
 Only one control connection can be active at a time.
@@ -70,13 +71,28 @@ The optional `.env` file sits beside `share-host.exe`. Environment variables ove
 | Setting | Default | Description |
 | --- | --- | --- |
 | `SHARE_APP_ADDR` | `127.0.0.1:8443` | HTTP listen address. HTTPS must be provided by a separate trusted proxy. |
+| `SHARE_APP_FPS` | `8` | Video encode rate in frames per second while the window changes, 1 to 30. |
 | `SHARE_APP_CAPTURE_STATS` | `off` | Capture diagnostics: `off`, `on`, or `verify`. `verify` adds CPU-intensive pixel checks. Any value other than `off` also logs the browser's receive statistics. |
+| `SHARE_APP_RDP_USERNAME` | *(empty)* | Windows account for the RDP session keep-alive. See below. |
+| `SHARE_APP_RDP_PASSWORD` | *(empty)* | Password of the RDP session keep-alive account. Both credentials must be set to enable the feature. |
 
 A disconnected media connection gets a 5-second grace period to recover. Input commands are buffered while the send buffer is full; a backlog lasting 5 seconds or exceeding 256 queued commands ends the connection to avoid applying stale input.
 
+## Session keep-alive (RDP)
+
+When the Windows session is viewed over Remote Desktop and the human RDP client disconnects, the session is left without a display and Windows Graphics Capture stops. The optional session keep-alive holds a loopback RDP connection to the host's own session (`127.0.0.1:3389`, 1920x1080, received bitmaps discarded) so the session keeps a display and capture continues.
+
+To use it:
+
+1. Enable Remote Desktop on the Windows PC.
+2. Set `SHARE_APP_RDP_USERNAME` and `SHARE_APP_RDP_PASSWORD` to the same Windows account that runs `share-host`.
+3. Press **Keep alive** in the web UI window list. The button shows a status dot that is polled every 5 seconds while the list is visible.
+
+While the keep-alive connection is up, the session display takes the requested 1920x1080 resolution. Any disconnect, including a human reconnecting and taking the session over, is terminal: the host never reconnects on its own, so press **Keep alive** again to start a new connection.
+
 ## Video encoding
 
-Video uses VP9 profile 0 at 8 fps, with low-latency screen encoding, CRF 31 and target bitrate 6M. The target bitrate is not a limit on total network traffic or keyframe bursts. After a pixel change, the encoder runs at full rate for one second, then sends an idle delta frame about once per second. Browser PLI/FIR requests still trigger recovery keyframes.
+Video uses VP9 profile 0 at 8 fps by default (`SHARE_APP_FPS`), with low-latency screen encoding, CRF 31 and target bitrate 6M. The target bitrate is not a limit on total network traffic or keyframe bursts. After a pixel change, the encoder runs at full rate for one second, then sends an idle delta frame about once per second. Browser PLI/FIR requests still trigger recovery keyframes.
 
 The host logs the offer's codec lines to check browser VP9 support. A browser without VP9 profile 0 receives a connection error; there is no VP8 fallback. Before tuning quality or idle timing, compare static text, typing, menus and scrolling on Windows over a connection limited to about 1 Mbps, using `SHARE_APP_CAPTURE_STATS=on`. Check host CPU, receive statistics and phone heat/battery use.
 

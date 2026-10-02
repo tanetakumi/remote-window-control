@@ -9,16 +9,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+
+	"share-app-host/internal/media"
 )
 
 const (
 	envAddr         = "SHARE_APP_ADDR"
 	envCaptureStats = "SHARE_APP_CAPTURE_STATS"
+	envFPS          = "SHARE_APP_FPS"
 
 	envRDPUsername = "SHARE_APP_RDP_USERNAME"
 	envRDPPassword = "SHARE_APP_RDP_PASSWORD"
 
 	defaultAddr = "127.0.0.1:8443"
+
+	minFPS = 1
+	maxFPS = 30
 )
 
 // Capture measurement modes (SHARE_APP_CAPTURE_STATS).
@@ -45,6 +52,8 @@ type Config struct {
 	FFmpegPath string
 	// CaptureStats is one of the CaptureStats* modes; off by default.
 	CaptureStats string
+	// FPS is the video encode rate while the window changes, minFPS to maxFPS.
+	FPS int
 	// RDPUsername and RDPPassword are the Windows account (the user running
 	// share-host) the loopback RDP keep-alive signs in with. Both must be
 	// set to enable it.
@@ -102,12 +111,18 @@ func LoadFrom(env Env) (Config, error) {
 		return Config{}, fmt.Errorf("%s must be %s, %s or %s", envCaptureStats, CaptureStatsOff, CaptureStatsOn, CaptureStatsVerify)
 	}
 
+	fps, err := strconv.Atoi(setting(envFPS, strconv.Itoa(media.DefaultFPS)))
+	if err != nil || fps < minFPS || fps > maxFPS {
+		return Config{}, fmt.Errorf("%s must be an integer from %d to %d", envFPS, minFPS, maxFPS)
+	}
+
 	return Config{
 		ListenAddr:   setting(envAddr, defaultAddr),
 		ClientDir:    defaultClientDir(base),
 		ProbePath:    findProbe(base),
 		FFmpegPath:   findFFmpeg(env.ExeDir),
 		CaptureStats: stats,
+		FPS:          fps,
 		RDPUsername:  setting(envRDPUsername, ""),
 		RDPPassword:  setting(envRDPPassword, ""),
 	}, nil
