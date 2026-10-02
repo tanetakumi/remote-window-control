@@ -13,6 +13,7 @@ import (
 	"share-app-host/internal/app"
 	"share-app-host/internal/config"
 	"share-app-host/internal/hostlog"
+	"share-app-host/internal/win32"
 )
 
 func main() {
@@ -23,6 +24,11 @@ func main() {
 }
 
 func run() error {
+	releaseInstallLock, err := win32.HoldInstallLock()
+	if err != nil {
+		return fmt.Errorf("hold installation lock: %w", err)
+	}
+	defer releaseInstallLock()
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("locate host executable: %w", err)

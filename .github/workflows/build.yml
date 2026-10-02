@@ -15,7 +15,34 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  ffmpeg:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install FFmpeg cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 mingw-w64-tools nasm make pkg-config curl xz-utils
+      - name: Build pinned LGPL FFmpeg and corresponding sources
+        run: bash scripts/ffmpeg/build.sh
+      - name: Upload FFmpeg with source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: share-app-ffmpeg
+          path: |
+            dist/ffmpeg/package/
+            dist/ffmpeg/*-share-app-sources.tar.gz
+            dist/ffmpeg/sources.sha256
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
   build:
+    needs: ffmpeg
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:
@@ -32,89 +59,49 @@ jobs:
           node-version-file: web-ui/package.json
           cache: npm
           cache-dependency-path: web-ui/package-lock.json
-      - name: Build and test web UI
-        working-directory: web-ui
-        run: |
-          npm ci
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm test
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Build window capture
-        run: |
-          dotnet restore window-capture/apps/CaptureProbe/CaptureProbe.csproj --locked-mode
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-restore
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Publish window capture
-        if: github.event_name != 'pull_request'
-        run: |
-          dotnet publish window-capture/apps/CaptureProbe/CaptureProbe.csproj -c Release --no-build -o dist/native
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Smoke test window enumeration
-        run: |
-          $probe = if (Test-Path dist/native/CaptureProbe.exe) { "dist/native/CaptureProbe.exe" } else { "window-capture/apps/CaptureProbe/bin/Release/net10.0-windows10.0.26100.0/win-x64/CaptureProbe.exe" }
-          $output = & $probe --list
-          if ($LASTEXITCODE -ne 0) { throw "CaptureProbe --list failed with exit code $LASTEXITCODE" }
-          $document = [System.Text.Json.JsonDocument]::Parse(($output -join "`n"))
-          try {
-            if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Array) { throw "CaptureProbe --list did not return a JSON array" }
-            Write-Host "Window enumeration succeeded: $($document.RootElement.GetArrayLength()) windows"
-          } finally { $document.Dispose() }
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: control-server/go.mod
           cache-dependency-path: control-server/go.sum
-      - name: Install ffmpeg
+      - name: Download bundled FFmpeg and corresponding sources
+        uses: actions/download-artifact@v4
+        with:
+          name: share-app-ffmpeg
+          path: dist/ffmpeg
+      - name: Build and test
+        env:
+          CHECK_ONLY: ${{ github.event_name == 'pull_request' }}
         run: |
-          choco install ffmpeg --version=8.1.1 --yes --no-progress
+          if ($env:CHECK_ONLY -eq 'true') {
+            node scripts/build.mjs --check
+          } else {
+            node scripts/build.mjs
+          }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Verify ffmpeg for encoder integration tests
-        run: |
-          $ffmpegPath = (Get-Command ffmpeg -ErrorAction Stop).Source
-          & $ffmpegPath -version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $encoders = & $ffmpegPath -hide_banner -encoders
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not ($encoders -match '\s libvpx-vp9\s')) { throw "ffmpeg must support the libvpx-vp9 encoder" }
-      - name: Build and test control server
-        working-directory: control-server
-        run: |
-          $goPath = (Get-Command go).Source
-          & $goPath version
-          & $goPath build -ldflags="-H=windowsgui" -o bin/share-host.exe ./cmd/share-host
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & $goPath vet ./...
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # vet already ran in full; execute tests afresh, including ffmpeg integration.
-          & $goPath test -vet=off -count=1 ./...
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Create distro
+      - name: Package installer, ZIP, sources and checksums
+        if: github.event_name != 'pull_request'
+        env:
+          PACKAGE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.0-dev' }}
+        run: ./installer/build.ps1 -Version $env:PACKAGE_VERSION
+      - name: Smoke test install, upgrade and uninstall
         if: github.event_name != 'pull_request'
         run: |
-          $dist = "dist/share-app"
-          New-Item -ItemType Directory -Force -Path "$dist/web", "$dist/CaptureProbe", "$dist/scripts" | Out-Null
-          Copy-Item control-server/bin/share-host.exe $dist/
-          Copy-Item .github/distribution/はじめにお読みください.txt $dist/
-          Copy-Item -Recurse web-ui/dist/* $dist/web/
-          Copy-Item -Recurse dist/native/* $dist/CaptureProbe/
-          Copy-Item scripts/create-rdp-credentials.ps1 $dist/scripts/
-          Copy-Item LICENSE $dist/
+          $installers = @(Get-ChildItem dist/releases/*-Setup.exe)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one installer' }
+          ./installer/test.ps1 -InstallerPath $installers[0].FullName
       - name: Upload artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: share-app-windows
-          # Upload the directory contents so the downloaded ZIP needs one extraction.
-          path: dist/share-app/
-          include-hidden-files: true
-          compression-level: 6
+          name: share-app-windows-packages
+          path: dist/releases/
+          compression-level: 0
+          retention-days: 14
           if-no-files-found: error
 
   release:
@@ -128,19 +115,18 @@ jobs:
       - name: Download distribution
         uses: actions/download-artifact@v4
         with:
-          name: share-app-windows
-          path: dist/share-app
-      - name: Package release ZIP
-        shell: pwsh
-        env:
-          DIST_VERSION: ${{ github.ref_name }}
-        run: |
-          # Archive the distribution contents directly.
-          [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path "dist/share-app").Path, (Join-Path $PWD "dist/share-app-$env:DIST_VERSION.zip"))
-      - name: Create release
+          name: share-app-windows-packages
+          path: dist/releases
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          draft: true
+          body_path: dist/releases/RELEASE-NOTES.md
+          files: |
+            dist/releases/*-Setup.exe
+            dist/releases/*-windows-x64.zip
+            dist/releases/*-share-app-sources.tar.gz
+            dist/releases/SHA256SUMS.txt
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

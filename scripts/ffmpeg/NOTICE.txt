@@ -1,0 +1,22 @@
+Share App runs FFmpeg as a separate executable to encode VP9 video.
+FFmpeg is licensed under LGPL version 2.1 or later. See COPYING.LGPLv2.1
+and LICENSE.md in this directory. This build disables GPL and nonfree
+components and includes only the libvpx external media library.
+
+libvpx is provided by the WebM project under a BSD license; see LICENSE,
+PATENTS and AUTHORS. FFmpeg also contains code derived from the Independent
+JPEG Group. We acknowledge the work of the Independent JPEG Group.
+No changes are made to either upstream source archive.
+
+The exact FFmpeg and libvpx source archives, build script, configuration,
+and toolchain information accompany the installer and ZIP as
+ffmpeg-<version>-share-app-sources.tar.gz on the same download page:
+https://github.com/tanetakumi/remote-window-control/releases
+The source bundle is also included in the Actions packaging artifact.
+Keep it available for as long as the corresponding binaries are distributed.
+
+FFmpeg: https://ffmpeg.org/
+libvpx: https://github.com/webmproject/libvpx
+
+This notice applies to the bundled FFmpeg and its dependencies. The Share
+App attribution and license are in the separate top-level LICENSE file.
