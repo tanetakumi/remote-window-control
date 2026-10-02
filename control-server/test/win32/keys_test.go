@@ -11,6 +11,7 @@ func TestVirtualKey(t *testing.T) {
 		"Backspace":  0x08,
 		"Tab":        0x09,
 		"Enter":      0x0D,
+		"Shift":      0x10,
 		"Escape":     0x1B,
 		" ":          0x20,
 		"PageUp":     0x21,
@@ -31,7 +32,7 @@ func TestVirtualKey(t *testing.T) {
 }
 
 func TestVirtualKeyIgnoresPrintableAndUnknownKeys(t *testing.T) {
-	for _, key := range []string{"a", "A", "1", "", "Shift", "F5", "enter"} {
+	for _, key := range []string{"a", "A", "1", "", "Control", "F5", "enter"} {
 		if vk, ok := win32.VirtualKey(key); ok {
 			t.Errorf("VirtualKey(%q) = %#x, want no mapping", key, vk)
 		}

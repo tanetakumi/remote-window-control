@@ -222,7 +222,10 @@ async function startRemoteControl() {
     paletteElement: document.querySelector("#special-keys-palette"),
     stageElement: videoStageElement,
     moveHandle: document.querySelector("#move-special-keys-palette"),
-    keyButton: document.querySelector("#send-backspace"),
+    keyButtons: [
+      { element: document.querySelector("#send-backspace"), keys: ["Backspace"] },
+      { element: document.querySelector("#send-shift-enter"), keys: ["Shift", "Enter"] },
+    ],
   }, remote.sendControl);
   keyboard = attachTextInput(
     {

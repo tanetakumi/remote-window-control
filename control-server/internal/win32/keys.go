@@ -7,6 +7,7 @@ var domKeyToVirtualKey = map[string]uint16{
 	"Backspace":  0x08, // VK_BACK
 	"Tab":        0x09, // VK_TAB
 	"Enter":      0x0D, // VK_RETURN
+	"Shift":      0x10, // VK_SHIFT
 	"Escape":     0x1B, // VK_ESCAPE
 	" ":          0x20, // VK_SPACE
 	"PageUp":     0x21, // VK_PRIOR

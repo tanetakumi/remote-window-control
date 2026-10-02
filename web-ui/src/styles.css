@@ -764,8 +764,7 @@ body {
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 180px;
+  gap: 6px;
   max-width: calc(100% - 16px - var(--palette-safe-left) - var(--palette-safe-right));
   padding: 6px;
   border: 1px solid var(--border-hover);
@@ -789,10 +788,6 @@ body {
   font: inherit;
   font-size: 0.85rem;
   touch-action: none;
-}
-
-#special-keys-palette #send-backspace {
-  flex: 1 1 auto;
 }
 
 #special-keys-palette #move-special-keys-palette {

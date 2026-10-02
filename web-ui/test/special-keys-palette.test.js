@@ -35,8 +35,12 @@ function fixture(sendControl) {
     getComputedStyle: () => ({ getPropertyValue: () => "0px" }),
   });
   const controls = Object.fromEntries([
-    "buttonElement", "paletteElement", "stageElement", "moveHandle", "keyButton",
+    "buttonElement", "paletteElement", "stageElement", "moveHandle", "keyButton", "shiftEnterButton",
   ].map(name => [name, new Element()]));
+  controls.keyButtons = [
+    { element: controls.keyButton, keys: ["Backspace"] },
+    { element: controls.shiftEnterButton, keys: ["Shift", "Enter"] },
+  ];
   controls.stageElement.ownerDocument = { defaultView: view };
   const sent = [];
   const send = sendControl ?? (command => { sent.push(command); return true; });
@@ -72,6 +76,19 @@ test("only an active Backspace click sends one press and release; closing disabl
   assert.equal(c.paletteElement.hidden, true);
   assert.equal(c.buttonElement.attributes["aria-pressed"], "false");
   assert.equal(sent.length, 2);
+  palette.cleanup();
+});
+
+test("Shift+Enter holds Shift around Enter and releases in reverse order", () => {
+  const { controls: c, sent, palette } = fixture();
+  emit(c.buttonElement, "click");
+  emit(c.shiftEnterButton, "click");
+  assert.deepEqual(sent, [
+    { type: "input.keyDown", key: "Shift" },
+    { type: "input.keyDown", key: "Enter" },
+    { type: "input.keyUp", key: "Enter" },
+    { type: "input.keyUp", key: "Shift" },
+  ]);
   palette.cleanup();
 });
 

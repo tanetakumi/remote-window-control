@@ -5,7 +5,7 @@ const MOVE_STEP = 10;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function attachSpecialKeysPalette({
-  buttonElement, paletteElement, stageElement, moveHandle, keyButton,
+  buttonElement, paletteElement, stageElement, moveHandle, keyButtons,
 }, sendControl) {
   const view = stageElement.ownerDocument.defaultView;
   const { listen, cleanup: removeListeners } = createListenerTracker();
@@ -14,8 +14,8 @@ export function attachSpecialKeysPalette({
   let disposed = false;
   let position = null;
   let drag = null;
-  let keyPointer = null;
   let sending = false;
+  const keyPointers = new Map();
 
   const isVisible = () => !disposed && opened && !textInputActive;
   const getBounds = () => {
@@ -65,7 +65,7 @@ export function attachSpecialKeysPalette({
     const visible = isVisible();
     if (!visible) {
       stopDragging();
-      keyPointer = null;
+      keyPointers.clear();
     }
     paletteElement.hidden = !visible;
     buttonElement.disabled = disposed;
@@ -73,7 +73,7 @@ export function attachSpecialKeysPalette({
     buttonElement.setAttribute("aria-expanded", String(visible));
     buttonElement.setAttribute("aria-pressed", String(visible));
     moveHandle.disabled = !visible;
-    keyButton.disabled = !visible || sending;
+    for (const { element } of keyButtons) element.disabled = !visible || sending;
     place();
   };
 
@@ -82,35 +82,47 @@ export function attachSpecialKeysPalette({
     opened = !opened;
     syncUi();
   });
-  listen(keyButton, "pointerdown", (event) => {
-    if (isVisible() && event.isPrimary && event.button === 0) {
-      keyPointer = { pointerId: event.pointerId, cancelled: false };
+  // Presses the keys in order and releases them in reverse, so Shift wraps Enter.
+  const pressKeys = (keys) => {
+    for (const key of keys) {
+      if (!sendControl({ type: "input.keyDown", key }) || disposed) return;
     }
-  });
-  listen(keyButton, "pointercancel", (event) => {
-    if (keyPointer?.pointerId === event.pointerId) keyPointer.cancelled = true;
-  });
-  listen(keyButton, "pointerup", (event) => {
-    if (!keyPointer || keyPointer.pointerId !== event.pointerId) return;
-    // Touch pointers implicitly capture the button, even when released outside it.
-    const rect = keyButton.getBoundingClientRect();
-    keyPointer.cancelled ||= event.clientX < rect.left || event.clientX > rect.left + rect.width
-      || event.clientY < rect.top || event.clientY > rect.top + rect.height;
-  });
-  listen(keyButton, "click", (event) => {
-    const cancelled = keyPointer?.cancelled && event.detail !== 0;
-    keyPointer = null;
-    if (cancelled || !isVisible() || sending) return;
-    sending = true;
-    keyButton.disabled = true;
-    try {
-      if (!sendControl({ type: "input.keyDown", key: "Backspace" }) || disposed) return;
-      if (!sendControl({ type: "input.keyUp", key: "Backspace" })) return;
-    } finally {
-      sending = false;
-      keyButton.disabled = !isVisible();
+    for (const key of [...keys].reverse()) {
+      if (!sendControl({ type: "input.keyUp", key })) return;
     }
-  });
+  };
+  for (const { element, keys } of keyButtons) {
+    listen(element, "pointerdown", (event) => {
+      if (isVisible() && event.isPrimary && event.button === 0) {
+        keyPointers.set(element, { pointerId: event.pointerId, cancelled: false });
+      }
+    });
+    listen(element, "pointercancel", (event) => {
+      const pointer = keyPointers.get(element);
+      if (pointer?.pointerId === event.pointerId) pointer.cancelled = true;
+    });
+    listen(element, "pointerup", (event) => {
+      const pointer = keyPointers.get(element);
+      if (!pointer || pointer.pointerId !== event.pointerId) return;
+      // Touch pointers implicitly capture the button, even when released outside it.
+      const rect = element.getBoundingClientRect();
+      pointer.cancelled ||= event.clientX < rect.left || event.clientX > rect.left + rect.width
+        || event.clientY < rect.top || event.clientY > rect.top + rect.height;
+    });
+    listen(element, "click", (event) => {
+      const cancelled = keyPointers.get(element)?.cancelled && event.detail !== 0;
+      keyPointers.delete(element);
+      if (cancelled || !isVisible() || sending) return;
+      sending = true;
+      for (const button of keyButtons) button.element.disabled = true;
+      try {
+        pressKeys(keys);
+      } finally {
+        sending = false;
+        for (const button of keyButtons) button.element.disabled = !isVisible();
+      }
+    });
+  }
   listen(moveHandle, "pointerdown", (event) => {
     if (!isVisible() || drag || !event.isPrimary || event.button !== 0) return;
     event.preventDefault();
