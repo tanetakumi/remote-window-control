@@ -169,7 +169,6 @@ async function connectToWindow(target) {
   if (connecting) return;
   connecting = true;
   setWindowListEnabled(false);
-  setSelectStatus(`Connecting to ${target.title || "window"}…`);
   try {
     await setTargetWindow(target.handle);
     if (textDraft.target !== target.handle) {

@@ -40,7 +40,6 @@ export function attachSettingsScreen({
   saveButton.addEventListener("click", async () => {
     if (busy || !ready) return;
     busy = true;
-    setStatus("Saving…");
     render();
     try {
       apply(await save({ fps: Number(fpsInput.value), crf: Number(crfInput.value), newline }));
@@ -58,7 +57,6 @@ export function attachSettingsScreen({
     // Reload the stored values, discarding unsaved edits.
     async open() {
       ready = false;
-      setStatus("Loading…");
       render();
       try {
         apply(await load());
