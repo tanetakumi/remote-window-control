@@ -13,6 +13,8 @@ import (
 var knownKeys = map[string]bool{
 	envAddr:         true,
 	envCaptureStats: true,
+	envRDPUsername:  true,
+	envRDPPassword:  true,
 }
 
 // ParseDotenv reads KEY=VALUE lines. Blank lines and lines starting with '#'

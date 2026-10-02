@@ -16,6 +16,7 @@ import (
 	"share-app-host/internal/httpapi"
 	"share-app-host/internal/input"
 	"share-app-host/internal/media"
+	"share-app-host/internal/rdpkeep"
 	"share-app-host/internal/session"
 	"share-app-host/internal/win32"
 	"share-app-host/internal/window"
@@ -57,12 +58,19 @@ func Run(cfg config.Config) error {
 	})
 	defer hub.Close()
 
+	keeper := rdpkeep.NewManager(rdpkeep.Config{
+		Username: cfg.RDPUsername,
+		Password: cfg.RDPPassword,
+	})
+	defer keeper.Stop()
+
 	server := httpapi.New(httpapi.Options{
 		Addr:      cfg.ListenAddr,
 		ClientDir: cfg.ClientDir,
 		Windows:   NewTargetService(selection, dispatcher),
 		Snapshots: probe,
 		Control:   hub,
+		Keepalive: keeper,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

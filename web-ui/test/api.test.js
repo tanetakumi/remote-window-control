@@ -1,17 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchWindows, setTargetWindow } from "../src/core/api.js";
+import { fetchWindows, setTargetWindow, fetchKeepalive, setKeepalive } from "../src/core/api.js";
 
 test("window APIs work without application credentials", async (t) => {
   const target = { handle: 123, title: "Test window" };
+  const keepalive = { state: "connected", enabled: true };
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
     calls.push({ url, options });
-    return Response.json(url === "/api/windows" ? [target] : target);
+    if (url === "/api/windows") return Response.json([target]);
+    if (url === "/api/session-keepalive") return Response.json(keepalive);
+    return Response.json(target);
   });
 
   assert.deepEqual(await fetchWindows(), [target]);
   assert.deepEqual(await setTargetWindow(target.handle), target);
+  assert.deepEqual(await fetchKeepalive(), keepalive);
+  assert.deepEqual(await setKeepalive(false), keepalive);
   assert.deepEqual(calls, [
     { url: "/api/windows", options: undefined },
     {
@@ -20,6 +25,15 @@ test("window APIs work without application credentials", async (t) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ handle: target.handle }),
+      },
+    },
+    { url: "/api/session-keepalive", options: undefined },
+    {
+      url: "/api/session-keepalive",
+      options: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
       },
     },
   ]);
@@ -34,7 +48,9 @@ test("rejected API requests report errors without attempting authentication", as
 
   await assert.rejects(fetchWindows(), /Request rejected/);
   await assert.rejects(setTargetWindow(123), /Request rejected/);
-  assert.deepEqual(calls, ["/api/windows", "/api/target-window"]);
+  await assert.rejects(fetchKeepalive(), /Request rejected/);
+  await assert.rejects(setKeepalive(true), /Request rejected/);
+  assert.deepEqual(calls, ["/api/windows", "/api/target-window", "/api/session-keepalive", "/api/session-keepalive"]);
 });
 
 test("window loading preserves helper diagnostics and falls back on empty errors", async (t) => {

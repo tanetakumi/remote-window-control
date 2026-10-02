@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"share-app-host/internal/rdpkeep"
 	"share-app-host/internal/window"
 )
 
@@ -33,6 +34,12 @@ type Snapshotter interface {
 	CapturePNG(ctx context.Context, handle uint64) ([]byte, error)
 }
 
+// Keepalive reports and toggles the RDP session keep-alive connection.
+type Keepalive interface {
+	Status() rdpkeep.Status
+	SetEnabled(enabled bool) (rdpkeep.Status, error)
+}
+
 // Options configure a Server.
 type Options struct {
 	// Addr is the listen address.
@@ -44,6 +51,8 @@ type Options struct {
 	Snapshots Snapshotter
 	// Control serves the control WebSocket at /ws. It may be nil.
 	Control http.Handler
+	// Keepalive serves the session keep-alive endpoints. It may be nil.
+	Keepalive Keepalive
 }
 
 // Server is the host's HTTP server.
@@ -53,6 +62,7 @@ type Server struct {
 	clientDir string
 	windows   Windows
 	snapshots Snapshotter
+	keepalive Keepalive
 
 	snapshotMu sync.Mutex // one snapshot helper at a time
 }
@@ -63,6 +73,7 @@ func New(opts Options) *Server {
 		clientDir: opts.ClientDir,
 		windows:   opts.Windows,
 		snapshots: opts.Snapshots,
+		keepalive: opts.Keepalive,
 	}
 	control := opts.Control
 	if control == nil {
@@ -73,6 +84,10 @@ func New(opts Options) *Server {
 	mux.HandleFunc("GET /api/windows", s.handleListWindows)
 	mux.HandleFunc("POST /api/target-window", s.handleSelectTarget)
 	mux.HandleFunc("GET /api/snapshot", s.handleSnapshot)
+	if s.keepalive != nil {
+		mux.HandleFunc("GET /api/session-keepalive", s.handleKeepaliveStatus)
+		mux.HandleFunc("POST /api/session-keepalive", s.handleKeepaliveSet)
+	}
 	mux.Handle("/ws", control)
 	mux.HandleFunc("/", s.handleStatic)
 

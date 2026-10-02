@@ -15,6 +15,9 @@ const (
 	envAddr         = "SHARE_APP_ADDR"
 	envCaptureStats = "SHARE_APP_CAPTURE_STATS"
 
+	envRDPUsername = "SHARE_APP_RDP_USERNAME"
+	envRDPPassword = "SHARE_APP_RDP_PASSWORD"
+
 	defaultAddr = "127.0.0.1:8443"
 )
 
@@ -42,6 +45,11 @@ type Config struct {
 	FFmpegPath string
 	// CaptureStats is one of the CaptureStats* modes; off by default.
 	CaptureStats string
+	// RDPUsername and RDPPassword are the Windows account (the user running
+	// share-host) the loopback RDP keep-alive signs in with. Both must be
+	// set to enable it.
+	RDPUsername string
+	RDPPassword string
 }
 
 // Env is the process context a configuration is resolved from. It exists so
@@ -100,5 +108,7 @@ func LoadFrom(env Env) (Config, error) {
 		ProbePath:    findProbe(base),
 		FFmpegPath:   findFFmpeg(env.ExeDir),
 		CaptureStats: stats,
+		RDPUsername:  setting(envRDPUsername, ""),
+		RDPPassword:  setting(envRDPPassword, ""),
 	}, nil
 }

@@ -158,7 +158,14 @@ body {
   line-height: 1.2;
 }
 
-#refresh-button {
+.header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#refresh-button,
+#keepalive-button {
   min-height: 44px;
   flex-shrink: 0;
   display: inline-flex;
@@ -178,18 +185,43 @@ body {
   transition: background-color 0.18s, border-color 0.18s, transform 0.15s;
 }
 
-#refresh-button:hover {
+#refresh-button:hover,
+#keepalive-button:hover {
   background: var(--bg-surface-elevated);
   border-color: var(--border-hover);
 }
 
-#refresh-button:active {
+#refresh-button:active,
+#keepalive-button:active {
   transform: scale(0.97);
 }
 
-#refresh-button:focus-visible {
+#refresh-button:focus-visible,
+#keepalive-button:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+#keepalive-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--text-muted, #64748b);
+  transition: background-color 0.18s, box-shadow 0.18s;
+}
+
+#keepalive-dot[data-state="connected"] {
+  background: var(--color-emerald);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.75);
+}
+
+#keepalive-dot[data-state="connecting"] {
+  background: var(--color-amber);
+}
+
+#keepalive-dot[data-state="disconnected"] {
+  background: var(--color-rose);
 }
 
 .refresh-icon {

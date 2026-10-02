@@ -3,6 +3,7 @@ module share-app-host
 go 1.27.1
 
 require (
+	github.com/bouncyball-git/gopher-rdp v1.0.8
 	github.com/gorilla/websocket v1.5.3
 	github.com/pion/rtcp v1.2.18
 	github.com/pion/rtp v1.10.5

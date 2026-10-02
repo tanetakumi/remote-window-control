@@ -1,6 +1,6 @@
 import "./styles.css";
 
-import { fetchWindows, setTargetWindow } from "./core/api.js";
+import { fetchWindows, setTargetWindow, fetchKeepalive, setKeepalive } from "./core/api.js";
 import { createRemoteConnection } from "./core/webrtc.js";
 import { attachTouchControlsUI } from "./input/touch-ui.js";
 import { attachTextInput } from "./input/keyboard.js";
@@ -26,8 +26,11 @@ const textInput = document.querySelector("#remote-text-input");
 const noticeElement = document.querySelector("#remote-notice");
 const noticeMessage = document.querySelector("#remote-notice-message");
 const refreshButton = document.querySelector("#refresh-button");
+const keepaliveButton = document.querySelector("#keepalive-button");
+const keepaliveDot = document.querySelector("#keepalive-dot");
 
 let connecting = false;
+let keepaliveBusy = false;
 let cleanupRemote = () => {};
 let connectionAbort;
 // Keep only the current target's draft in memory, including across reconnects.
@@ -278,6 +281,42 @@ document.querySelector("#windows-button").addEventListener("click", () => {
 refreshButton?.addEventListener("click", () => {
   if (!connecting) showWindowSelect();
 });
+
+function renderKeepalive(status) {
+  if (!keepaliveDot) return;
+  keepaliveDot.dataset.state = status?.state ?? "off";
+  if (keepaliveButton) {
+    keepaliveButton.setAttribute("aria-pressed", String(Boolean(status?.enabled)));
+    keepaliveButton.title = status?.error || "Keep the session display alive";
+  }
+}
+
+async function refreshKeepalive() {
+  try {
+    renderKeepalive(await fetchKeepalive());
+  } catch {
+    renderKeepalive(null);
+  }
+}
+
+keepaliveButton?.addEventListener("click", async () => {
+  if (keepaliveBusy) return;
+  keepaliveBusy = true;
+  try {
+    const status = await fetchKeepalive();
+    renderKeepalive(await setKeepalive(!status.enabled));
+  } catch (err) {
+    setSelectStatus(err instanceof Error ? err.message : "Keep-alive failed", true);
+  } finally {
+    keepaliveBusy = false;
+  }
+});
+// Poll only while the window list (where the toggle lives) is shown, and not
+// while a toggle is in flight so a stale poll cannot overwrite its result.
+setInterval(() => {
+  if (!document.hidden && !selectScreen.hidden && !keepaliveBusy) refreshKeepalive();
+}, 5000);
+refreshKeepalive();
 
 window.addEventListener("pagehide", () => returnToWindows());
 document.addEventListener("visibilitychange", () => {
