@@ -30,15 +30,12 @@ On the phone or tablet, use a browser that offers WebRTC VP9 profile 0. The host
 
 Download a Windows ZIP from [Releases](https://github.com/tanetakumi/remote-window-control/releases) when one is available. If no release has been published, build the Windows package from source using the instructions below.
 
-1. Extract the ZIP into a folder. Keep `share-host.exe`, `CaptureProbe/`, `web/`, and `.env` together.
+1. Extract the ZIP into a folder. Keep `share-host.exe`, `CaptureProbe/`, `web/`, and `scripts/` together.
 2. Install FFmpeg listed above.
-3. Open PowerShell in the extracted folder and run:
-
-   ```powershell
-   .\share-host.exe
-   ```
-
+3. Double-click `share-host.exe`. The packaged host runs in the background without a console window; CaptureProbe and FFmpeg also run without console windows.
 4. On the Windows PC, open <http://127.0.0.1:8443/> and select a window.
+
+Closing the browser leaves the host running. To stop it, open Windows Task Manager and end `share-host.exe`. Diagnostics are saved to `%LOCALAPPDATA%\ShareApp\logs\share-host.log`. A tray icon and an in-app exit command are not yet available.
 
 The default address is available only from the Windows PC itself. To use the app from a phone, set up a trusted network path as described below.
 
@@ -63,18 +60,30 @@ From the repository root, run:
 node scripts/build.mjs
 ```
 
-The output folder contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env`, and the license. The packaged host still requires FFmpeg on the Windows PC; the .NET runtime ships inside `CaptureProbe.exe`.
+The output folder contains `share-host.exe`, `CaptureProbe/`, `web/`, `scripts/create-rdp-credentials.ps1`, and the license. The packaged host still requires FFmpeg on the Windows PC; the .NET runtime ships inside `CaptureProbe.exe`.
 
 ## Configuration
 
-The optional `.env` file sits beside `share-host.exe`. Environment variables override values in the file.
+The host creates `%LOCALAPPDATA%\ShareApp\config.json` on first startup:
+
+```json
+{
+  "listenAddr": "127.0.0.1:8443",
+  "captureStats": "off",
+  "fps": 8,
+  "crf": 31,
+  "maxScale": 2
+}
+```
+
+Settings and logs are stored in this user directory for both installed and development builds. The installation directory only supplies executable programs and web assets. The host does not read `.env`, `SHARE_APP_*` configuration variables, or configuration files beside the executable, and does not migrate them.
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `SHARE_APP_ADDR` | `127.0.0.1:8443` | HTTP listen address. HTTPS must be provided by a separate trusted proxy. |
-| `SHARE_APP_CAPTURE_STATS` | `off` | Capture diagnostics: `off`, `on`, or `verify`. `verify` adds CPU-intensive pixel checks. Any value other than `off` also logs the browser's receive statistics. |
-| `SHARE_APP_RDP_USERNAME` | *(empty)* | Windows account for the RDP session keep-alive. See below. |
-| `SHARE_APP_RDP_PASSWORD` | *(empty)* | Password of the RDP session keep-alive account. Both credentials must be set to enable the feature. |
+| `listenAddr` | `127.0.0.1:8443` | HTTP listen address. An empty host such as `:8443` listens on network interfaces too. HTTPS must be provided by a separate trusted proxy. |
+| `captureStats` | `off` | Capture diagnostics: `off`, `on`, or `verify`. `verify` adds CPU-intensive pixel checks. Any value other than `off` also logs the browser's receive statistics. |
+
+Stop the host before editing these fields and restart it to apply changes. The browser settings API only changes video settings; it preserves both startup fields. RDP credentials are stored separately in the optional encrypted file described below.
 
 ### Settings page
 
@@ -86,7 +95,7 @@ The gear button next to **Refresh** in the web UI opens a settings page with thr
 | Video quality (CRF) | `31` | VP9 constant rate factor, 0 to 63. Lower is sharper and uses more bandwidth; the `6M` bitrate cap stays fixed. Applies from the next connection. |
 | Max window scale | `2` | Window pixels per CSS pixel of the browser viewport, 0.5 to 4 in steps of 0.25. The host sizes the shared window to the viewport times the device's pixel ratio, limited to this value, then fits it to the monitor's work area. Lower values give a smaller window (larger-looking UI) and less video data. Applies from the next connection or viewport change. |
 
-**Save** writes them to `config.json` beside `share-host.exe` (the repository root in a checkout), for example `{"fps": 8, "crf": 31, "maxScale": 2}`. The file is optional; the host fails to start if it exists but is malformed or out of range.
+**Save** writes the video settings to `%LOCALAPPDATA%\ShareApp\config.json`, preserving `listenAddr` and `captureStats`. Missing fields use their defaults. A missing file is created automatically; the host fails to start if the file is malformed or out of range.
 
 A disconnected media connection gets a 5-second grace period to recover. Input commands are buffered while the send buffer is full; a backlog lasting 5 seconds or exceeding 256 queued commands ends the connection to avoid applying stale input.
 
@@ -97,8 +106,20 @@ When the Windows session is viewed over Remote Desktop and the human RDP client 
 To use it:
 
 1. Enable Remote Desktop on the Windows PC.
-2. Set `SHARE_APP_RDP_USERNAME` and `SHARE_APP_RDP_PASSWORD` to the same Windows account that runs `share-host`.
-3. Press **Keep alive** in the web UI window list. The button shows a status dot that is polled every 5 seconds while the list is visible.
+2. On that PC, as the Windows user who runs Share App, open Windows PowerShell in the extracted folder and run:
+
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\create-rdp-credentials.ps1
+   ```
+
+   Enter the account's username and password (not a Windows Hello PIN). The password input is hidden. The script creates `%LOCALAPPDATA%\ShareApp\rdp-credentials.bin` and its parent directory if needed. The file contains UTF-8 JSON encrypted with Windows DPAPI in `CurrentUser` scope; it writes no plaintext credential file. The file is normally only decryptable by the same Windows user on that PC.
+
+3. Restart Share App to load the credentials.
+4. Press **Keep alive** in the web UI window list. The button shows a status dot that is polled every 5 seconds while the list is visible.
+
+Credentials cannot be registered, read or changed through the web UI or HTTP API. Without the file, normal window sharing works and RDP keep-alive is unavailable. An existing file that cannot be decrypted or contains invalid data prevents startup and is reported in the log.
+
+To replace credentials, stop the host, rerun the script with `-Force`, and restart. To disable keep-alive, stop the host and remove `%LOCALAPPDATA%\ShareApp\rdp-credentials.bin`. Generate the file on the PC and under the Windows user that will run the app.
 
 While the keep-alive connection is up, the session display takes the requested 1920x1080 resolution. Any disconnect, including a human reconnecting and taking the session over, is terminal: the host never reconnects on its own, so press **Keep alive** again to start a new connection.
 
@@ -106,7 +127,7 @@ While the keep-alive connection is up, the session display takes the requested 1
 
 Video uses VP9 profile 0 at 8 fps by default (the Video FPS setting), with low-latency screen encoding, CRF 31 (the Video quality setting) and target bitrate 6M. The target bitrate is not a limit on total network traffic or keyframe bursts. After a pixel change, the encoder runs at full rate for one second, then sends an idle delta frame about once per second. Browser PLI/FIR requests still trigger recovery keyframes.
 
-The host logs the offer's codec lines to check browser VP9 support. A browser without VP9 profile 0 receives a connection error; there is no VP8 fallback. Before tuning quality or idle timing, compare static text, typing, menus and scrolling on Windows over a connection limited to about 1 Mbps, using `SHARE_APP_CAPTURE_STATS=on`. Check host CPU, receive statistics and phone heat/battery use.
+The host logs the offer's codec lines to check browser VP9 support. A browser without VP9 profile 0 receives a connection error; there is no VP8 fallback. Before tuning quality or idle timing, compare static text, typing, menus and scrolling on Windows over a connection limited to about 1 Mbps, with `"captureStats": "on"` in `config.json` and the host restarted. Check host CPU, receive statistics and phone heat/battery use.
 
 ## Known limitation
 

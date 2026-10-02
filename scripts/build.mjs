@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -103,27 +103,24 @@ try {
     console.log("Skipping CaptureProbe --list: this Windows-only smoke test needs Windows.");
   }
 
-  run("go", ["build", "-o", host, "./cmd/share-host"], {
+  run("go", ["build", "-ldflags=-H=windowsgui", "-o", host, "./cmd/share-host"], {
     cwd: server,
     env: { ...env, GOOS: "windows", GOARCH: "amd64", CGO_ENABLED: "0" },
   });
   run("go", ["vet", "./..."], { cwd: server });
   run("go", ["test", "-vet=off", "-count=1", "./..."], { cwd: server });
 
-  // Replace generated assets only; retain any local .env, FFmpeg, and runtime logs.
+  // Replace generated asset directories so stale bundles from earlier builds are
+  // not served; settings and logs live in the user data directory instead.
   mkdirSync(output, { recursive: true });
-  for (const directory of ["web", "CaptureProbe"]) rmSync(join(output, directory), { recursive: true, force: true });
+  for (const directory of ["web", "CaptureProbe", "scripts"]) rmSync(join(output, directory), { recursive: true, force: true });
   cpSync(join(web, "dist"), join(output, "web"), { recursive: true });
   cpSync(native, join(output, "CaptureProbe"), { recursive: true });
   cpSync(host, join(output, "share-host.exe"));
+  mkdirSync(join(output, "scripts"), { recursive: true });
+  cpSync(join(root, "scripts/create-rdp-credentials.ps1"), join(output, "scripts/create-rdp-credentials.ps1"));
   cpSync(join(root, "LICENSE"), join(output, "LICENSE"));
   cpSync(join(root, ".github/distribution/はじめにお読みください.txt"), join(output, "はじめにお読みください.txt"));
-  try {
-    writeFileSync(join(output, ".env"), "SHARE_APP_ADDR=127.0.0.1:8443\n", { flag: "wx" });
-  } catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    console.log("Keeping the existing dist/share-app/.env.");
-  }
   console.log(`\nWindows x64 distribution ready: ${output}`);
   console.log("Run share-host.exe on Windows with ffmpeg (libvpx-vp9) available.");
 } catch (error) {

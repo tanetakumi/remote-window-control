@@ -1,133 +1,106 @@
-// Package config resolves the host's settings and the locations of the files
-// it depends on.
-//
-// Settings come from environment variables, then an optional .env file, then
-// defaults. The .env file is plain data (KEY=VALUE), never evaluated as shell.
-// The values edited in the web client live in config.json instead (Settings).
+// Package config resolves settings in the user's data directory and locates
+// the host's bundled programs and web client.
 package config
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"share-app-host/internal/credentials"
 )
 
 const (
-	envAddr         = "SHARE_APP_ADDR"
-	envCaptureStats = "SHARE_APP_CAPTURE_STATS"
-
-	envRDPUsername = "SHARE_APP_RDP_USERNAME"
-	envRDPPassword = "SHARE_APP_RDP_PASSWORD"
-
-	defaultAddr = "127.0.0.1:8443"
-
-	// settingsFile holds the Settings edited in the web client.
+	defaultAddr  = "127.0.0.1:8443"
 	settingsFile = "config.json"
-
-	minFPS = 1
-	maxFPS = 30
-	// minCRF and maxCRF bound the libvpx-vp9 constant rate factor.
-	minCRF = 0
-	maxCRF = 63
-	// minMaxScale and maxMaxScale bound Settings.MaxScale.
-	minMaxScale = 0.5
-	maxMaxScale = 4.0
+	minFPS       = 1
+	maxFPS       = 30
+	minCRF       = 0
+	maxCRF       = 63
+	minMaxScale  = 0.5
+	maxMaxScale  = 4.0
 )
 
 // DefaultMaxScale is Settings.MaxScale until it is changed.
 const DefaultMaxScale = 2
 
-// Capture measurement modes (SHARE_APP_CAPTURE_STATS).
+// Capture measurement modes stored in config.json.
 const (
-	// CaptureStatsOff writes no periodic measurements.
 	CaptureStatsOff = "off"
-	// CaptureStatsOn logs dirty-region and encoded-video statistics.
-	CaptureStatsOn = "on"
-	// CaptureStatsVerify also checks dirty regions against a pixel comparison
-	// of consecutive frames, at a noticeable CPU cost.
+	CaptureStatsOn  = "on"
+	// CaptureStatsVerify adds CPU-intensive pixel checks to diagnostics.
 	CaptureStatsVerify = "verify"
 )
 
-// Config is the resolved host configuration.
+// Config is the resolved host configuration. Credentials are only used by the
+// RDP client; they are never included in the settings API.
 type Config struct {
-	// ListenAddr is the HTTP listen address; loopback by default.
-	ListenAddr string
-	// ClientDir is the directory of web client assets that are served: web/
-	// beside the executable in a release, web-ui/dist/ in a checkout.
-	ClientDir string
-	// ProbePath is the CaptureProbe executable.
-	ProbePath string
-	// FFmpegPath is the ffmpeg executable; a bare name is looked up on PATH.
-	FFmpegPath string
-	// CaptureStats is one of the CaptureStats* modes; off by default.
+	ListenAddr   string
+	ClientDir    string
+	ProbePath    string
+	FFmpegPath   string
 	CaptureStats string
-	// SettingsPath is the config.json that stores the Settings.
-	SettingsPath string
-	// RDPUsername and RDPPassword are the Windows account (the user running
-	// share-host) the loopback RDP keep-alive signs in with. Both must be
-	// set to enable it.
+	// Settings is opened once at startup and shared by the host components.
+	Settings    *SettingsStore
 	RDPUsername string
 	RDPPassword string
 }
 
-// Env is the process context a configuration is resolved from. It exists so
-// tests can resolve configuration without touching the real environment.
+// Env separates installed assets from writable per-user data for tests.
 type Env struct {
-	// Getenv looks up an environment variable.
-	Getenv func(string) string
-	// ExeDir is the directory of the running executable.
-	ExeDir string
-	// WorkDir is the current directory, used to find a source checkout. It may
-	// be empty.
+	ExeDir  string
 	WorkDir string
+	DataDir string
 }
 
-// CurrentEnv returns the environment of the running process.
-func CurrentEnv() Env {
-	exe, _ := os.Executable()
-	workDir, _ := os.Getwd()
-	return Env{Getenv: os.Getenv, ExeDir: filepath.Dir(exe), WorkDir: workDir}
-}
-
-// Load resolves the configuration of the running process.
-func Load() (Config, error) {
-	return LoadFrom(CurrentEnv())
-}
-
-// LoadFrom resolves the configuration for env.
-func LoadFrom(env Env) (Config, error) {
-	base := resolveBaseDir(env)
-
-	envFile := filepath.Join(base, ".env")
-	fileValues, err := readDotenvFile(envFile)
+// UserDataDir returns %LOCALAPPDATA%\ShareApp on Windows. The platform's
+// equivalent directory is used when running development checks elsewhere.
+func UserDataDir() (string, error) {
+	base, err := os.UserCacheDir()
 	if err != nil {
-		return Config{}, fmt.Errorf("%s: %w", envFile, err)
+		return "", fmt.Errorf("locate local application data: %w", err)
 	}
-	setting := func(key, fallback string) string {
-		if v := env.Getenv(key); v != "" {
-			return v
-		}
-		if v := fileValues[key]; v != "" {
-			return v
-		}
-		return fallback
+	if !filepath.IsAbs(base) {
+		return "", fmt.Errorf("local application data directory must be absolute")
 	}
+	return filepath.Join(base, "ShareApp"), nil
+}
 
-	stats := setting(envCaptureStats, CaptureStatsOff)
-	switch stats {
-	case CaptureStatsOff, CaptureStatsOn, CaptureStatsVerify:
-	default:
-		return Config{}, fmt.Errorf("%s must be %s, %s or %s", envCaptureStats, CaptureStatsOff, CaptureStatsOn, CaptureStatsVerify)
+// Load resolves assets and reads config.json and optional RDP credentials.
+func Load(dataDir string) (Config, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return Config{}, fmt.Errorf("locate host executable: %w", err)
 	}
+	workDir, _ := os.Getwd()
+	return LoadFrom(Env{ExeDir: filepath.Dir(exe), WorkDir: workDir, DataDir: dataDir})
+}
 
+// LoadFrom creates default settings on first run. Installation directories and
+// environment variables do not supply application settings.
+func LoadFrom(env Env) (Config, error) {
+	if !filepath.IsAbs(env.DataDir) {
+		return Config{}, fmt.Errorf("user data directory must be absolute")
+	}
+	base := resolveBaseDir(env)
+	settingsPath := filepath.Join(env.DataDir, settingsFile)
+	store, err := OpenSettings(settingsPath)
+	if err != nil {
+		return Config{}, err
+	}
+	startup := store.Startup()
+	rdp, err := credentials.Load(filepath.Join(env.DataDir, credentials.FileName))
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
-		ListenAddr:   setting(envAddr, defaultAddr),
+		ListenAddr:   startup.ListenAddr,
 		ClientDir:    defaultClientDir(base),
 		ProbePath:    findProbe(base),
 		FFmpegPath:   findFFmpeg(env.ExeDir),
-		CaptureStats: stats,
-		SettingsPath: filepath.Join(base, settingsFile),
-		RDPUsername:  setting(envRDPUsername, ""),
-		RDPPassword:  setting(envRDPPassword, ""),
+		CaptureStats: startup.CaptureStats,
+		Settings:     store,
+		RDPUsername:  rdp.Username,
+		RDPPassword:  rdp.Password,
 	}, nil
 }

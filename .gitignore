@@ -4,6 +4,9 @@ Thumbs.db
 # Local env (secrets, paths)
 .env
 
+# Locally generated encrypted RDP credentials
+rdp-credentials.bin
+
 # Settings saved from the web UI
 /config.json
 

@@ -3,6 +3,8 @@ package httpapi_test
 import (
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"share-app-host/internal/config"
@@ -97,5 +99,37 @@ func TestWithoutSettingsTheirEndpointIsNotFound(t *testing.T) {
 	e := newEnv(t)
 	if w := e.do("GET", "/api/settings", ""); w.Code != http.StatusNotFound {
 		t.Fatalf("GET /api/settings = %d", w.Code)
+	}
+}
+
+func TestVideoAPISavesPreserveStartupSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"listenAddr":":9000","captureStats":"verify","fps":8,"crf":31,"maxScale":2}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := config.OpenSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := newEnv(t, withSettings(store))
+	if w := e.doBody("PUT", "/api/settings", "", []byte(`{"fps":12,"crf":20,"maxScale":1.5}`)); w.Code != http.StatusOK {
+		t.Fatalf("PUT = %d %s", w.Code, w.Body)
+	}
+	reopened, err := config.OpenSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Startup(); got.ListenAddr != ":9000" || got.CaptureStats != "verify" {
+		t.Fatalf("video save replaced startup settings: %+v", got)
+	}
+	if reopened.Get() != (config.Settings{FPS: 12, CRF: 20, MaxScale: 1.5}) {
+		t.Fatal("video settings were not saved")
+	}
+	// These properties are edited on disk; no browser API can change them.
+	for _, field := range []string{`"listenAddr":":8443"`, `"captureStats":"off"`, `"username":"someone"`, `"password":"secret"`} {
+		body := []byte(`{"fps":12,"crf":20,"maxScale":1.5,` + field + `}`)
+		if w := e.doBody("PUT", "/api/settings", "", body); w.Code != http.StatusBadRequest {
+			t.Fatalf("startup or credential field accepted: %d", w.Code)
+		}
 	}
 }

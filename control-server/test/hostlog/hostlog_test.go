@@ -12,11 +12,10 @@ import (
 	"share-app-host/internal/hostlog"
 )
 
-func TestLogsAreBesideExecutableAndSurviveRestart(t *testing.T) {
+func TestLogsAreInTheDataDirectoryAndSurviveRestart(t *testing.T) {
 	dir := t.TempDir()
-	exe := filepath.Join(dir, "share-host.exe")
 	for _, message := range []string{"first run\n", "second run\n"} {
-		writer, err := hostlog.Open(exe)
+		writer, err := hostlog.Open(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +47,7 @@ func TestRotationKeepsTheNewestBackups(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	writer, err := hostlog.Open(filepath.Join(dir, "share-host.exe"))
+	writer, err := hostlog.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +77,7 @@ func TestRotationKeepsTheNewestBackups(t *testing.T) {
 
 func TestOversizedWriteIsBoundedWithoutLosingBytes(t *testing.T) {
 	dir := t.TempDir()
-	writer, err := hostlog.Open(filepath.Join(dir, "share-host.exe"))
+	writer, err := hostlog.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +114,7 @@ func TestBlockedRotationKeepsLogging(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(blocker, "held"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	writer, err := hostlog.Open(filepath.Join(dir, "share-host.exe"))
+	writer, err := hostlog.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +142,7 @@ func TestBlockedRotationKeepsLogging(t *testing.T) {
 
 func TestConcurrentWritesPreserveCompleteRecords(t *testing.T) {
 	dir := t.TempDir()
-	writer, err := hostlog.Open(filepath.Join(dir, "share-host.exe"))
+	writer, err := hostlog.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +173,7 @@ func TestUnwritableLogDirectoryIsReported(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "logs"), []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := hostlog.Open(filepath.Join(dir, "share-host.exe")); err == nil || !strings.Contains(err.Error(), "create log directory") {
+	if _, err := hostlog.Open(dir); err == nil || !strings.Contains(err.Error(), "create log directory") {
 		t.Fatalf("Open error = %v", err)
 	}
 }

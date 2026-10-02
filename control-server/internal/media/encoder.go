@@ -13,6 +13,7 @@ import (
 
 	"share-app-host/internal/hostlog"
 	"share-app-host/internal/tailbuf"
+	"share-app-host/internal/win32"
 )
 
 // Fixed defaults for low-latency window streaming; see the README.
@@ -102,6 +103,7 @@ type encoder struct {
 func startEncoder(parent context.Context, cfg EncoderConfig, sink SampleWriter, width, height int) (*encoder, error) {
 	ctx, cancel := context.WithCancel(parent)
 	cmd := exec.CommandContext(ctx, cfg.FFmpegPath, cfg.Args(width, height)...)
+	win32.HideConsole(cmd)
 	cmd.WaitDelay = 2 * time.Second
 
 	stdin, err := cmd.StdinPipe()

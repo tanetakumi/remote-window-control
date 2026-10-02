@@ -12,6 +12,7 @@ import (
 
 	"share-app-host/internal/hostlog"
 	"share-app-host/internal/tailbuf"
+	"share-app-host/internal/win32"
 )
 
 // Stream is a running CaptureProbe process that emits frames of one window.
@@ -35,6 +36,7 @@ func (p *Probe) OpenStream(ctx context.Context, handle uint64) (*Stream, error) 
 	ctx, cancel := context.WithCancel(ctx)
 	args := append([]string{"--stream", "--hwnd", fmt.Sprint(handle)}, p.stream.args()...)
 	command := exec.CommandContext(ctx, p.path, args...)
+	win32.HideConsole(command)
 	command.WaitDelay = killDelay
 
 	// Own the read end independently of exec.Cmd.Wait, so process exit cannot

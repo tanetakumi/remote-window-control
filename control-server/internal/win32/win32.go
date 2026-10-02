@@ -1,10 +1,10 @@
-// Package win32 is a thin layer over the Win32 calls the host needs to drive
-// another application's window: posting input messages, reading window
-// geometry, restoring and activating windows and resizing the client area.
+// Package win32 is a thin layer over the Win32 calls the host needs to configure
+// processes and drive another application's window: posting input messages,
+// reading geometry, restoring and activating windows and resizing the client area.
 //
 // Everything that touches the operating system lives in *_windows.go files.
-// On other platforms unsupported.go provides the same API returning
-// ErrUnsupported, so dependants build and their logic can be tested anywhere.
+// On other platforms unsupported.go provides stubs, so dependants build and
+// their logic can be tested anywhere.
 // The platform-independent rules (key mapping, coordinate mapping, sizing)
 // live in untagged files and are unit-tested directly.
 package win32
@@ -12,7 +12,7 @@ package win32
 import "errors"
 
 var (
-	// ErrUnsupported is returned by every OS call on non-Windows platforms.
+	// ErrUnsupported is returned by operations requiring Windows on other platforms.
 	ErrUnsupported = errors.New("win32 API is only available on Windows")
 	// ErrWindowUnavailable is returned when a window's geometry cannot be read,
 	// for example because the window was closed after being selected.

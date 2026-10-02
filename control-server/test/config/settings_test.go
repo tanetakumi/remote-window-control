@@ -16,25 +16,38 @@ func settingsPath(t *testing.T) string {
 	return filepath.Join(t.TempDir(), "config.json")
 }
 
-func TestSettingsPathIsBesideTheEnvFile(t *testing.T) {
+func TestLoadedSettingsPersistInTheUserDataDirectory(t *testing.T) {
 	exeDir := t.TempDir()
 	mkdir(t, exeDir, "web")
-	cfg, err := config.LoadFrom(env(exeDir, "", nil))
+	context := env(t, exeDir, "")
+	cfg, err := config.LoadFrom(context)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(exeDir, "config.json"); cfg.SettingsPath != want {
-		t.Fatalf("SettingsPath = %q, want %q", cfg.SettingsPath, want)
+	saved := config.Settings{FPS: 15, CRF: 20, MaxScale: 1.5}
+	if err := cfg.Settings.Set(saved); err != nil {
+		t.Fatal(err)
+	}
+	store, err := config.OpenSettings(filepath.Join(context.DataDir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get(); got != saved {
+		t.Fatalf("saved settings = %+v, want %+v", got, saved)
 	}
 }
 
-func TestMissingSettingsFileGivesTheDefaults(t *testing.T) {
-	store, err := config.OpenSettings(settingsPath(t))
+func TestMissingSettingsFileCreatesTheDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ShareApp", "config.json")
+	store, err := config.OpenSettings(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := store.Get(), (config.Settings{FPS: 8, CRF: 31, MaxScale: 2}); got != want {
 		t.Fatalf("settings = %+v, want %+v", got, want)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("default config was not created: %v", err)
 	}
 }
 
@@ -70,6 +83,10 @@ func TestInvalidSettingsAreRejectedAndNotSaved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, bad := range []config.Settings{
 		{FPS: 0, CRF: 31, MaxScale: 2},
 		{FPS: 31, CRF: 31, MaxScale: 2},
@@ -87,14 +104,25 @@ func TestInvalidSettingsAreRejectedAndNotSaved(t *testing.T) {
 	if got := store.Get(); got != config.DefaultSettings() {
 		t.Fatalf("settings changed to %+v", got)
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("a rejected save created the file (err %v)", err)
+	if after, err := os.ReadFile(path); err != nil || string(after) != string(before) {
+		t.Fatalf("a rejected save changed the file (err %v)", err)
 	}
 }
 
 func TestFailedSaveKeepsTheCurrentSettings(t *testing.T) {
-	store, err := config.OpenSettings(filepath.Join(t.TempDir(), "missing-dir", "config.json"))
+	dir := filepath.Join(t.TempDir(), "ShareApp")
+	path := filepath.Join(dir, "config.json")
+	store, err := config.OpenSettings(path)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	err = store.Set(config.Settings{FPS: 12, CRF: 31, MaxScale: 2})
@@ -122,11 +150,18 @@ func TestSettingsFileFieldsDefaultWhenOmitted(t *testing.T) {
 
 func TestBadSettingsFileFailsAndNamesTheFile(t *testing.T) {
 	for name, content := range map[string]string{
-		"syntax":        `{"fps": `,
-		"unknown field": `{"fps": 8, "fpz": 9}`,
-		"fps range":     `{"fps": 99}`,
-		"crf range":     `{"crf": 64}`,
-		"scale range":   `{"maxScale": 5}`,
+		"syntax":               `{"fps": `,
+		"unknown field":        `{"fps": 8, "fpz": 9}`,
+		"fps range":            `{"fps": 99}`,
+		"crf range":            `{"crf": 64}`,
+		"scale range":          `{"maxScale": 5}`,
+		"null":                 `null`,
+		"trailing object":      `{} {}`,
+		"trailing garbage":     `{} broken`,
+		"address without port": `{"listenAddr":"127.0.0.1"}`,
+		"port range":           `{"listenAddr":"127.0.0.1:65536"}`,
+		"port zero":            `{"listenAddr":":0"}`,
+		"diagnostics mode":     `{"captureStats":"yes"}`,
 	} {
 		path := settingsPath(t)
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

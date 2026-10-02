@@ -89,7 +89,7 @@ jobs:
         run: |
           $goPath = (Get-Command go).Source
           & $goPath version
-          & $goPath build -o bin/share-host.exe ./cmd/share-host
+          & $goPath build -ldflags="-H=windowsgui" -o bin/share-host.exe ./cmd/share-host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $goPath vet ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -100,12 +100,12 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           $dist = "dist/share-app"
-          New-Item -ItemType Directory -Force -Path "$dist/web", "$dist/CaptureProbe" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dist/web", "$dist/CaptureProbe", "$dist/scripts" | Out-Null
           Copy-Item control-server/bin/share-host.exe $dist/
           Copy-Item .github/distribution/はじめにお読みください.txt $dist/
           Copy-Item -Recurse web-ui/dist/* $dist/web/
           Copy-Item -Recurse dist/native/* $dist/CaptureProbe/
-          [System.IO.File]::WriteAllText((Join-Path $dist ".env"), "SHARE_APP_ADDR=127.0.0.1:8443`n", [System.Text.UTF8Encoding]::new($false))
+          Copy-Item scripts/create-rdp-credentials.ps1 $dist/scripts/
           Copy-Item LICENSE $dist/
       - name: Upload artifact
         if: github.event_name != 'pull_request'
@@ -136,7 +136,7 @@ jobs:
         env:
           DIST_VERSION: ${{ github.ref_name }}
         run: |
-          # Archive the contents directly, including the generated .env dotfile.
+          # Archive the distribution contents directly.
           [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path "dist/share-app").Path, (Join-Path $PWD "dist/share-app-$env:DIST_VERSION.zip"))
       - name: Create release
         uses: softprops/action-gh-release@v2

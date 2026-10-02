@@ -1,5 +1,12 @@
 package win32
 
+import (
+	"os/exec"
+	"syscall"
+
+	"golang.org/x/sys/windows"
+)
+
 // dpiAwarenessPerMonitorV2 is DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (-4).
 const dpiAwarenessPerMonitorV2 = ^uintptr(3)
 
@@ -11,4 +18,12 @@ func EnableDPIAwareness() error {
 		return callError(err)
 	}
 	return nil
+}
+
+// HideConsole disables console creation for cmd while preserving redirected I/O.
+func HideConsole(cmd *exec.Cmd) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NO_WINDOW
 }

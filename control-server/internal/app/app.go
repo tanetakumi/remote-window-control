@@ -48,10 +48,7 @@ func Run(cfg config.Config) error {
 	}
 	selection := window.NewSelection(probe)
 
-	settings, err := config.OpenSettings(cfg.SettingsPath)
-	if err != nil {
-		return err
-	}
+	settings := cfg.Settings
 	dispatcher := input.NewDispatcher(input.NewMessageInjector(selection, func() float64 {
 		return settings.Get().MaxScale
 	}))

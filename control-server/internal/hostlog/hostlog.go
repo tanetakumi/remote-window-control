@@ -1,4 +1,4 @@
-// Package hostlog persists host diagnostics beside the running executable.
+// Package hostlog persists host diagnostics in the user's data directory.
 package hostlog
 
 import (
@@ -30,10 +30,10 @@ type Writer struct {
 	rotateFailed bool
 }
 
-// Open creates logs beside executablePath, independently of the working directory.
+// Open creates logs under dataDir, independently of the installation directory.
 // Existing logs are appended to, so restarting the host preserves diagnostics.
-func Open(executablePath string) (*Writer, error) {
-	dir := filepath.Join(filepath.Dir(executablePath), "logs")
+func Open(dataDir string) (*Writer, error) {
+	dir := filepath.Join(dataDir, "logs")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("create log directory %q: %w", dir, err)
 	}

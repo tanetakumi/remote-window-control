@@ -27,16 +27,23 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("locate host executable: %w", err)
 	}
-	output, err := hostlog.Open(exe)
+	dataDir, err := config.UserDataDir()
+	if err != nil {
+		return err
+	}
+	output, err := hostlog.Open(dataDir)
 	if err != nil {
 		return err
 	}
 	defer output.Close()
-	log.SetOutput(io.MultiWriter(os.Stderr, output))
+	// A GUI build can have no usable stderr handle. Persist diagnostics first
+	// so a failed console write cannot prevent them from reaching the log file.
+	log.SetOutput(io.MultiWriter(output, os.Stderr))
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.SetPrefix(fmt.Sprintf("pid=%d ", os.Getpid()))
 	log.Printf("host starting executable=%q platform=%s/%s runtime=%s", exe, runtime.GOOS, runtime.GOARCH, runtime.Version())
-	cfg, err := config.Load()
+	log.Printf("user data directory=%q", dataDir)
+	cfg, err := config.Load(dataDir)
 	if err != nil {
 		log.Printf("configuration failed: %v", err)
 		return err

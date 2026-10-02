@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	"share-app-host/internal/media"
@@ -16,7 +20,7 @@ import (
 var ErrInvalidSettings = errors.New("invalid settings")
 
 // Settings are the values edited in the web client's settings page and kept in
-// config.json beside the .env file. Unlike .env they change while the host runs.
+// the user's config.json. The API only reads and writes these video settings.
 type Settings struct {
 	// FPS is the video encode rate while the window changes, minFPS to maxFPS.
 	// A new value applies to the next connection.
@@ -35,6 +39,34 @@ type Settings struct {
 // DefaultSettings returns the settings used while config.json does not exist.
 func DefaultSettings() Settings {
 	return Settings{FPS: media.DefaultFPS, CRF: media.DefaultCRF, MaxScale: DefaultMaxScale}
+}
+
+// StartupSettings are edited in config.json and apply after restarting the host.
+type StartupSettings struct {
+	ListenAddr   string `json:"listenAddr"`
+	CaptureStats string `json:"captureStats"`
+}
+
+type storedSettings struct {
+	StartupSettings
+	Settings
+}
+
+func (s StartupSettings) validate() error {
+	host, port, err := net.SplitHostPort(s.ListenAddr)
+	if err != nil || strings.ContainsAny(host, " \t\r\n") {
+		return fmt.Errorf("%w: listenAddr must be a host:port address", ErrInvalidSettings)
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil || number < 1 || number > 65535 {
+		return fmt.Errorf("%w: listenAddr port must be from 1 to 65535", ErrInvalidSettings)
+	}
+	switch s.CaptureStats {
+	case CaptureStatsOff, CaptureStatsOn, CaptureStatsVerify:
+		return nil
+	default:
+		return fmt.Errorf("%w: captureStats must be off, on or verify", ErrInvalidSettings)
+	}
 }
 
 // Validate reports whether the settings are within their allowed ranges.
@@ -56,37 +88,67 @@ type SettingsStore struct {
 	path string
 
 	mu      sync.Mutex
-	current Settings
+	current storedSettings
 }
 
 // OpenSettings loads the settings file at path. A missing file gives the
-// defaults; a malformed or out-of-range file is an error.
+// defaults and creates the file; a malformed or out-of-range file is an error.
 func OpenSettings(path string) (*SettingsStore, error) {
-	current := DefaultSettings()
+	current := storedSettings{
+		StartupSettings: StartupSettings{ListenAddr: defaultAddr, CaptureStats: CaptureStatsOff},
+		Settings:        DefaultSettings(),
+	}
 	data, err := os.ReadFile(path)
+	missing := os.IsNotExist(err)
 	switch {
-	case os.IsNotExist(err):
+	case missing:
 	case err != nil:
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", path, err)
 	default:
 		// Fields missing from the file keep their defaults.
+		if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
+			return nil, fmt.Errorf("%s: settings must be a JSON object", path)
+		}
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&current); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			return nil, fmt.Errorf("%s: unexpected data after settings object", path)
+		}
+		if err := current.StartupSettings.validate(); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 		if err := current.Validate(); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 	}
-	return &SettingsStore{path: path, current: current}, nil
+	store := &SettingsStore{path: path, current: current}
+	if missing {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if err := store.save(current); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+	}
+	return store, nil
 }
 
 // Get returns the current settings.
 func (s *SettingsStore) Get() Settings {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.current
+	return s.current.Settings
+}
+
+// Startup returns the configuration read at startup, without exposing it to
+// the browser's video settings API.
+func (s *SettingsStore) Startup() StartupSettings {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.current.StartupSettings
 }
 
 // Set validates next, writes it to the settings file and makes it current. The
@@ -95,17 +157,23 @@ func (s *SettingsStore) Set(next Settings) error {
 	if err := next.Validate(); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	updated := s.current
+	updated.Settings = next
+	if err := s.save(updated); err != nil {
+		return err
+	}
+	s.current = updated
+	return nil
+}
+
+func (s *SettingsStore) save(next storedSettings) error {
 	data, err := json.MarshalIndent(next, "", "  ")
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := writeFileAtomic(s.path, append(data, '\n')); err != nil {
-		return err
-	}
-	s.current = next
-	return nil
+	return writeFileAtomic(s.path, append(data, '\n'))
 }
 
 // writeFileAtomic replaces path through a temporary file so a crash never

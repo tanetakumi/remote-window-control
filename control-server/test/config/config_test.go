@@ -1,12 +1,15 @@
 package config_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"share-app-host/internal/config"
+	"share-app-host/internal/credentials"
 )
 
 const dotnetOutput = "net10.0-windows10.0.26100.0/win-x64"
@@ -14,7 +17,7 @@ const dotnetOutput = "net10.0-windows10.0.26100.0/win-x64"
 func mkdir(t *testing.T, elem ...string) string {
 	t.Helper()
 	dir := filepath.Join(elem...)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -24,29 +27,17 @@ func touch(t *testing.T, elem ...string) string {
 	t.Helper()
 	path := filepath.Join(elem...)
 	mkdir(t, filepath.Dir(path))
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
+	if err := os.WriteFile(path, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
 	return path
 }
 
-func writeEnvFile(t *testing.T, dir, content string) {
+func env(t *testing.T, exeDir, workDir string) config.Env {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	return config.Env{ExeDir: exeDir, WorkDir: workDir, DataDir: filepath.Join(t.TempDir(), "ShareApp")}
 }
 
-func env(exeDir, workDir string, vars map[string]string) config.Env {
-	return config.Env{
-		Getenv:  func(key string) string { return vars[key] },
-		ExeDir:  exeDir,
-		WorkDir: workDir,
-	}
-}
-
-// checkout creates a source checkout and returns its root and an executable
-// directory that is not part of it.
 func checkout(t *testing.T) (root, exeDir string) {
 	t.Helper()
 	root = t.TempDir()
@@ -56,10 +47,8 @@ func checkout(t *testing.T) (root, exeDir string) {
 
 func TestDevelopmentCheckoutDefaults(t *testing.T) {
 	root, exeDir := checkout(t)
-	// A nested working directory still finds the checkout.
-	workDir := mkdir(t, root, "control-server", "internal", "app")
-
-	cfg, err := config.LoadFrom(env(exeDir, workDir, nil))
+	context := env(t, exeDir, mkdir(t, root, "control-server", "internal", "app"))
+	cfg, err := config.LoadFrom(context)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,10 +58,27 @@ func TestDevelopmentCheckoutDefaults(t *testing.T) {
 		ProbePath:    filepath.Join(root, "CaptureProbe", "CaptureProbe.exe"),
 		FFmpegPath:   "ffmpeg",
 		CaptureStats: config.CaptureStatsOff,
-		SettingsPath: filepath.Join(root, "config.json"),
+		Settings:     cfg.Settings,
 	}
 	if cfg != want {
-		t.Fatalf("got  %+v\nwant %+v", cfg, want)
+		t.Fatalf("got %+v; want %+v", cfg, want)
+	}
+	if cfg.Settings == nil || cfg.Settings.Get() != config.DefaultSettings() {
+		t.Fatal("loaded configuration does not contain the default settings store")
+	}
+	data, err := os.ReadFile(filepath.Join(context.DataDir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var initial map[string]any
+	if err := json.Unmarshal(data, &initial); err != nil {
+		t.Fatal(err)
+	}
+	if initial["listenAddr"] != "127.0.0.1:8443" || initial["captureStats"] != "off" || initial["fps"] != float64(8) {
+		t.Fatalf("initial configuration = %s", data)
+	}
+	if cfg.RDPUsername != "" || cfg.RDPPassword != "" {
+		t.Fatal("RDP enabled without a credential file")
 	}
 }
 
@@ -81,209 +87,118 @@ func TestReleaseLayoutIsRecognisedBesideTheExecutable(t *testing.T) {
 	web := mkdir(t, exeDir, "web")
 	probe := touch(t, exeDir, "CaptureProbe", "CaptureProbe.exe")
 	ffmpeg := touch(t, exeDir, "ffmpeg.exe")
-
-	// A checkout above the working directory must not take over.
 	root, _ := checkout(t)
-
-	cfg, err := config.LoadFrom(env(exeDir, root, nil))
+	cfg, err := config.LoadFrom(env(t, exeDir, root))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.ClientDir != web || cfg.ProbePath != probe || cfg.FFmpegPath != ffmpeg {
 		t.Fatalf("release layout not used: %+v", cfg)
 	}
+	if _, err := os.Stat(filepath.Join(exeDir, "config.json")); !os.IsNotExist(err) {
+		t.Fatal("startup wrote configuration to the installation directory")
+	}
 }
 
-func TestExecutableDirectoryIsTheFallbackBase(t *testing.T) {
+func TestExecutableDirectoryIsTheFallbackAssetBase(t *testing.T) {
 	exeDir := t.TempDir()
-	cfg, err := config.LoadFrom(env(exeDir, "", nil))
+	cfg, err := config.LoadFrom(env(t, exeDir, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// With no release layout and no checkout, everything is looked up beside
-	// the executable.
-	if want := filepath.Join(exeDir, "CaptureProbe", "CaptureProbe.exe"); cfg.ProbePath != want {
-		t.Fatalf("ProbePath = %q, want %q", cfg.ProbePath, want)
-	}
-	if want := filepath.Join(exeDir, "web-ui", "dist"); cfg.ClientDir != want {
-		t.Fatalf("ClientDir = %q, want %q", cfg.ClientDir, want)
+	if cfg.ProbePath != filepath.Join(exeDir, "CaptureProbe", "CaptureProbe.exe") || cfg.ClientDir != filepath.Join(exeDir, "web-ui", "dist") {
+		t.Fatalf("unexpected asset paths: %+v", cfg)
 	}
 }
 
-func TestSettingsPrecedence(t *testing.T) {
-	root, exeDir := checkout(t)
-	writeEnvFile(t, root, "SHARE_APP_ADDR=127.0.0.1:9000\n")
-
-	t.Run("file overrides the default", func(t *testing.T) {
-		cfg, err := config.LoadFrom(env(exeDir, root, nil))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cfg.ListenAddr != "127.0.0.1:9000" {
-			t.Fatalf("ListenAddr = %q", cfg.ListenAddr)
-		}
-	})
-	t.Run("environment overrides the file", func(t *testing.T) {
-		cfg, err := config.LoadFrom(env(exeDir, root, map[string]string{"SHARE_APP_ADDR": "0.0.0.0:1"}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cfg.ListenAddr != "0.0.0.0:1" {
-			t.Fatalf("ListenAddr = %q", cfg.ListenAddr)
-		}
-	})
-	t.Run("an empty environment variable does not override", func(t *testing.T) {
-		cfg, err := config.LoadFrom(env(exeDir, root, map[string]string{"SHARE_APP_ADDR": ""}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cfg.ListenAddr != "127.0.0.1:9000" {
-			t.Fatalf("ListenAddr = %q", cfg.ListenAddr)
-		}
-	})
+func TestStartupSettingsComeFromUserConfig(t *testing.T) {
+	context := env(t, t.TempDir(), "")
+	mkdir(t, context.DataDir)
+	path := filepath.Join(context.DataDir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"listenAddr":":9000","captureStats":"verify","fps":12}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.LoadFrom(context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ListenAddr != ":9000" || cfg.CaptureStats != config.CaptureStatsVerify {
+		t.Fatalf("config = %+v", cfg)
+	}
+	if cfg.Settings == nil || cfg.Settings.Get().FPS != 12 {
+		t.Fatal("loaded configuration does not contain the file's video settings")
+	}
 }
 
-func TestClientDirectoryIsDetectedNotConfigured(t *testing.T) {
+func TestClientDirectoryPrefersBuiltWebAssets(t *testing.T) {
 	root, exeDir := checkout(t)
-	load := func(vars map[string]string) config.Config {
-		t.Helper()
-		cfg, err := config.LoadFrom(env(exeDir, root, vars))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return cfg
-	}
-
-	if got := load(nil).ClientDir; got != filepath.Join(root, "web-ui", "dist") {
-		t.Fatalf("checkout ClientDir = %q", got)
-	}
-	// A web/ directory in the base wins over the web-ui build output.
+	context := env(t, exeDir, root)
 	mkdir(t, root, "web")
-	if got := load(nil).ClientDir; got != filepath.Join(root, "web") {
-		t.Fatalf("ClientDir with web/ = %q", got)
-	}
-	// SHARE_APP_CLIENT_DIR used to override the detection; it is gone, so a
-	// leftover value in the environment changes nothing.
-	if got := load(map[string]string{"SHARE_APP_CLIENT_DIR": "elsewhere"}).ClientDir; got != filepath.Join(root, "web") {
-		t.Fatalf("a leftover SHARE_APP_CLIENT_DIR changed ClientDir to %q", got)
-	}
-}
-
-func TestEnvFileValuesAreLiteral(t *testing.T) {
-	root, exeDir := checkout(t)
-	writeEnvFile(t, root, "# test\nSHARE_APP_ADDR='literal-$(command)'\n")
-
-	cfg, err := config.LoadFrom(env(exeDir, root, nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.ListenAddr != "literal-$(command)" {
-		t.Fatalf("configuration was evaluated: %q", cfg.ListenAddr)
-	}
-}
-
-// An old .env that still sets the removed client directory must fail loudly
-// with its location, not be silently half-applied.
-func TestEnvFileWithTheRemovedClientDirSettingIsRejected(t *testing.T) {
-	root, exeDir := checkout(t)
-	writeEnvFile(t, root, "SHARE_APP_ADDR=127.0.0.1:9000\nSHARE_APP_CLIENT_DIR=web-ui/dist\n")
-
-	_, err := config.LoadFrom(env(exeDir, root, nil))
-	if err == nil || !strings.Contains(err.Error(), "line 2") {
-		t.Fatalf("error = %v, want one pointing at line 2", err)
-	}
-}
-
-func TestInvalidEnvFileFailsAndNamesTheFile(t *testing.T) {
-	root, exeDir := checkout(t)
-	writeEnvFile(t, root, "SHARE_APP_ADDR=ok\nNOT_A_SETTING=1\n")
-
-	_, err := config.LoadFrom(env(exeDir, root, nil))
-	if err == nil {
-		t.Fatal("invalid .env accepted")
-	}
-	if !strings.Contains(err.Error(), filepath.Join(root, ".env")) || !strings.Contains(err.Error(), "line 2") {
-		t.Fatalf("error does not say where the problem is: %v", err)
+	cfg, err := config.LoadFrom(context)
+	if err != nil || cfg.ClientDir != filepath.Join(root, "web") {
+		t.Fatalf("ClientDir = %q, error = %v", cfg.ClientDir, err)
 	}
 }
 
 func TestCaptureProbeLocationPreference(t *testing.T) {
 	root, exeDir := checkout(t)
+	context := env(t, exeDir, root)
 	probeAt := func(configuration string) string {
-		return filepath.Join(root, "window-capture", "apps", "CaptureProbe", "bin", configuration,
-			filepath.FromSlash(dotnetOutput), "CaptureProbe.exe")
+		return filepath.Join(root, "window-capture", "apps", "CaptureProbe", "bin", configuration, filepath.FromSlash(dotnetOutput), "CaptureProbe.exe")
 	}
 	load := func() string {
 		t.Helper()
-		cfg, err := config.LoadFrom(env(exeDir, root, nil))
+		cfg, err := config.LoadFrom(context)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return cfg.ProbePath
 	}
-
 	release := filepath.Join(root, "CaptureProbe", "CaptureProbe.exe")
 	if got := load(); got != release {
-		t.Fatalf("with nothing built, ProbePath = %q, want the release location %q", got, release)
+		t.Fatalf("ProbePath = %q", got)
 	}
-
 	touch(t, probeAt("Release"))
 	if got := load(); got != probeAt("Release") {
-		t.Fatalf("ProbePath = %q, want the Release build", got)
+		t.Fatalf("ProbePath = %q", got)
 	}
-
 	touch(t, probeAt("Debug"))
 	if got := load(); got != probeAt("Debug") {
-		t.Fatalf("ProbePath = %q, want Debug ahead of Release", got)
+		t.Fatalf("ProbePath = %q", got)
 	}
-
 	touch(t, release)
 	if got := load(); got != release {
-		t.Fatalf("ProbePath = %q, want the release location ahead of builds", got)
+		t.Fatalf("ProbePath = %q", got)
 	}
 }
 
-func TestCaptureMeasurementSetting(t *testing.T) {
-	root, exeDir := checkout(t)
-	load := func(vars map[string]string) (config.Config, error) {
-		return config.LoadFrom(env(exeDir, root, vars))
-	}
-
-	cfg, err := load(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.CaptureStats != config.CaptureStatsOff {
-		t.Fatalf("default stats=%q", cfg.CaptureStats)
-	}
-
-	writeEnvFile(t, root, "SHARE_APP_CAPTURE_STATS=verify\n")
-	if cfg, err = load(nil); err != nil {
-		t.Fatal(err)
-	}
-	if cfg.CaptureStats != config.CaptureStatsVerify {
-		t.Fatalf(".env stats=%q", cfg.CaptureStats)
-	}
-	if cfg, err = load(map[string]string{"SHARE_APP_CAPTURE_STATS": "on"}); err != nil {
-		t.Fatal(err)
-	}
-	if cfg.CaptureStats != config.CaptureStatsOn {
-		t.Fatalf("environment stats=%q", cfg.CaptureStats)
-	}
-
-	if _, err := load(map[string]string{"SHARE_APP_CAPTURE_STATS": "1"}); err == nil || !strings.Contains(err.Error(), "SHARE_APP_CAPTURE_STATS") {
-		t.Fatalf("error = %v, want one naming the setting", err)
+func TestInvalidCredentialFileFailsStartup(t *testing.T) {
+	context := env(t, t.TempDir(), "")
+	mkdir(t, context.DataDir)
+	path := touch(t, context.DataDir, credentials.FileName)
+	if _, err := config.LoadFrom(context); err == nil || !strings.Contains(err.Error(), path) {
+		t.Fatalf("startup error = %v", err)
 	}
 }
 
-// Idle encoding and cursor capture were measurement switches; both are now
-// fixed behaviour, so a leftover key in .env is reported rather than ignored.
-func TestEnvFileWithRemovedCaptureSettingsIsRejected(t *testing.T) {
-	for _, line := range []string{"SHARE_APP_IDLE_ENCODING=pause", "SHARE_APP_CAPTURE_CURSOR=off"} {
-		root, exeDir := checkout(t)
-		writeEnvFile(t, root, "SHARE_APP_ADDR=127.0.0.1:9000\n"+line+"\n")
-		if _, err := config.LoadFrom(env(exeDir, root, nil)); err == nil || !strings.Contains(err.Error(), "line 2") {
-			t.Fatalf("%s: error = %v, want one pointing at line 2", line, err)
-		}
+func TestUserDataDirUsesLocalAppDataOnWindows(t *testing.T) {
+	base := t.TempDir()
+	switch runtime.GOOS {
+	case "windows":
+		t.Setenv("LOCALAPPDATA", base)
+	case "linux":
+		t.Setenv("XDG_CACHE_HOME", base)
+	default:
+		t.Skip("platform directory covered on Windows and Linux")
+	}
+	got, err := config.UserDataDir()
+	if err != nil || got != filepath.Join(base, "ShareApp") {
+		t.Fatalf("UserDataDir = %q, %v", got, err)
+	}
+}
+
+func TestDataDirMustBeAbsolute(t *testing.T) {
+	if _, err := config.LoadFrom(config.Env{ExeDir: t.TempDir(), DataDir: "relative"}); err == nil {
+		t.Fatal("relative data directory accepted")
 	}
 }

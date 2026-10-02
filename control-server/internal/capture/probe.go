@@ -18,6 +18,7 @@ import (
 
 	"share-app-host/internal/hostlog"
 	"share-app-host/internal/tailbuf"
+	"share-app-host/internal/win32"
 	"share-app-host/internal/window"
 )
 
@@ -95,6 +96,7 @@ func (p *Probe) output(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, p.path, args...)
+	win32.HideConsole(command)
 	command.WaitDelay = killDelay
 	stderr := tailbuf.New(maxErrorDetail)
 	command.Stderr = io.MultiWriter(stderr, hostlog.Stderr{Label: fmt.Sprintf("CaptureProbe args=%q", args)})
