@@ -20,6 +20,8 @@ var (
 	procSetWindowPos              = user32.NewProc("SetWindowPos")
 	procIsIconic                  = user32.NewProc("IsIconic")
 	procShowWindowAsync           = user32.NewProc("ShowWindowAsync")
+	procSetForegroundWindow       = user32.NewProc("SetForegroundWindow")
+	procGetForegroundWindow       = user32.NewProc("GetForegroundWindow")
 	procSetProcessDpiAwarenessCtx = user32.NewProc("SetProcessDpiAwarenessContext")
 	procDwmGetWindowAttribute     = dwmapi.NewProc("DwmGetWindowAttribute")
 )

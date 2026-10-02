@@ -1,6 +1,6 @@
 // Package win32 is a thin layer over the Win32 calls the host needs to drive
 // another application's window: posting input messages, reading window
-// geometry, restoring minimized windows and resizing the client area.
+// geometry, restoring and activating windows and resizing the client area.
 //
 // Everything that touches the operating system lives in *_windows.go files.
 // On other platforms unsupported.go provides the same API returning
@@ -20,6 +20,8 @@ var (
 	// ErrWindowMinimized is returned when a minimized window could not be
 	// restored, so it cannot be captured.
 	ErrWindowMinimized = errors.New("the window is minimized and could not be restored; restore it on the host PC and connect again")
+	// ErrForegroundDenied is returned when the target did not become foreground.
+	ErrForegroundDenied = errors.New("the window could not be brought to the foreground; activate it on the host PC if rendering stops")
 )
 
 // HWND is a native window handle.

@@ -43,8 +43,6 @@ func Run(cfg config.Config) error {
 	var mediaStats time.Duration
 	if measuring {
 		mediaStats = statsInterval
-	}
-	if measuring {
 		log.Printf("capture measurement stats=%s", cfg.CaptureStats)
 	}
 	selection := window.NewSelection(probe)
@@ -52,7 +50,7 @@ func Run(cfg config.Config) error {
 
 	hub := session.NewHub(session.Options{
 		Dispatcher:    dispatcher,
-		Source:        RestoringSource(media.ProbeSource(probe), RestoreWindow),
+		Source:        PreparingSource(media.ProbeSource(probe), PrepareWindow),
 		Target:        selection,
 		Encoder:       media.DefaultEncoderConfig(cfg.FFmpegPath),
 		StatsInterval: mediaStats,
