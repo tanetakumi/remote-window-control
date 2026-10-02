@@ -98,6 +98,49 @@ func TestOversizedWriteIsBoundedWithoutLosingBytes(t *testing.T) {
 	}
 }
 
+// On Windows a log file held open by another process (a viewer following it,
+// for instance) cannot be renamed. Logging must carry on in the current file
+// and rotate once the obstacle is gone, not stop until the host restarts.
+func TestBlockedRotationKeepsLogging(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "logs", "share-host.log")
+	if err := os.Mkdir(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, bytes.Repeat([]byte("a"), hostlog.MaxBytes), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// A non-empty directory in place of the oldest backup cannot be removed.
+	blocker := fmt.Sprintf("%s.%d", path, hostlog.Backups)
+	if err := os.MkdirAll(filepath.Join(blocker, "held"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := hostlog.Open(filepath.Join(dir, "share-host.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	for _, message := range []string{"blocked 1\n", "blocked 2\n"} {
+		if _, err := writer.Write([]byte(message)); err != nil {
+			t.Fatalf("Write while rotation is blocked = %v", err)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || !strings.HasSuffix(string(data), "aablocked 1\nblocked 2\n") {
+		t.Fatalf("current log does not continue: error = %v", err)
+	}
+
+	if err := os.RemoveAll(blocker); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write([]byte("rotated\n")); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "rotated\n" {
+		t.Fatalf("current = %q, error = %v", data, err)
+	}
+}
+
 func TestConcurrentWritesPreserveCompleteRecords(t *testing.T) {
 	dir := t.TempDir()
 	writer, err := hostlog.Open(filepath.Join(dir, "share-host.exe"))

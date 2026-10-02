@@ -2,6 +2,7 @@
 package hostlog
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,13 +17,17 @@ const (
 	Backups  = 2
 )
 
-// Writer keeps share-host.log and two numbered backups, each at most 5 MiB.
+// Writer keeps share-host.log and two numbered backups, each at most 5 MiB
+// unless rotation is blocked (see rotate).
 // Writes and rotation are serialized, including writes from subprocesses.
 type Writer struct {
 	mu   sync.Mutex
 	file *os.File
 	path string
 	size int64
+	// rotateFailed is set while rotation keeps failing, so the failure is
+	// reported once rather than on every write.
+	rotateFailed bool
 }
 
 // Open creates logs beside executablePath, independently of the working directory.
@@ -53,12 +58,18 @@ func (w *Writer) open() error {
 	return nil
 }
 
+// rotate shifts the backups and starts a new log. If shifting fails, for
+// example because another process holds a log file open on Windows, the
+// current log is reopened so logging continues; rotation is retried on the
+// next write.
 func (w *Writer) rotate() error {
-	if err := w.file.Close(); err != nil {
-		w.file = nil
-		return err
-	}
+	closeErr := w.file.Close()
 	w.file = nil
+	shiftErr := w.shiftBackups()
+	return errors.Join(closeErr, shiftErr, w.open())
+}
+
+func (w *Writer) shiftBackups() error {
 	if err := os.Remove(fmt.Sprintf("%s.%d", w.path, Backups)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -71,7 +82,7 @@ func (w *Writer) rotate() error {
 			return err
 		}
 	}
-	return w.open()
+	return nil
 }
 
 func (w *Writer) Write(p []byte) (n int, err error) {
@@ -88,9 +99,14 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	}
 	for len(p) > 0 {
 		if w.size > 0 && w.size+int64(len(p)) > MaxBytes {
-			if err = w.rotate(); err != nil {
-				return n, err
+			rotateErr := w.rotate()
+			if w.file == nil {
+				return n, rotateErr
 			}
+			if rotateErr != nil && !w.rotateFailed {
+				fmt.Fprintf(os.Stderr, "host log rotation failed, appending to the current log: %v\n", rotateErr)
+			}
+			w.rotateFailed = rotateErr != nil
 		}
 		count := min(len(p), MaxBytes)
 		written, writeErr := w.file.Write(p[:count])
