@@ -114,6 +114,9 @@ func TestDispatchValidation(t *testing.T) {
 		{"missing type", `{}`},
 		{"invalid mouse button", `{"type":"input.mouseDown","button":"middle"}`},
 		{"empty mouse button", `{"type":"input.mouseDown"}`},
+		{"invalid tap button", `{"type":"input.tap","button":"middle"}`},
+		{"empty tap button", `{"type":"input.tap"}`},
+		{"invalid release button", `{"type":"input.mouseUp","button":"middle"}`},
 		{"oversized text", `{"type":"input.text","text":"` + strings.Repeat("a", 4097) + `"}`},
 		{"oversized message", `{"type":"input.text","text":"` + strings.Repeat("a", input.MaxMessageBytes) + `"}`},
 	}

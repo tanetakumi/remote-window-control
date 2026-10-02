@@ -4,7 +4,7 @@ import pion "github.com/pion/webrtc/v4"
 
 // Message types exchanged with the browser over the WebSocket, which carries
 // WebRTC signaling and host notices only. Input commands travel on the control
-// data channel; one arriving here is rejected with typeInputError.
+// data channel.
 const (
 	typeOffer  = "webrtc.offer"
 	typeAnswer = "webrtc.answer"

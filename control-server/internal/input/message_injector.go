@@ -1,7 +1,6 @@
 package input
 
 import (
-	"errors"
 	"log"
 	"time"
 
@@ -103,7 +102,7 @@ func (m *MessageInjector) ResizeViewport(c Command) error {
 	}
 	// A minimized window ignores the new size until it is restored, and its
 	// geometry (parked at -32000,-32000) would mislead the resize plan.
-	if restored, err := win32.RestoreMinimized(hwnd); err != nil && !errors.Is(err, win32.ErrUnsupported) {
+	if restored, err := win32.RestoreMinimized(hwnd); err != nil {
 		log.Printf("viewport resize restore failed hwnd=%d: %v", hwnd, err)
 		return err
 	} else if restored {
@@ -176,6 +175,7 @@ func (m *MessageInjector) locate(x, y float64) (hwnd win32.HWND, clientX, client
 	return hwnd, clientX, clientY, nil
 }
 
+// buttonFromName maps a button name the Dispatcher has already validated.
 func buttonFromName(name string) win32.Button {
 	if name == buttonRight {
 		return win32.ButtonRight

@@ -88,6 +88,14 @@ func (d *Dispatcher) Dispatch(raw []byte) error {
 		return errClosed
 	}
 
+	// Every button command is checked here, so none falls back to a default.
+	switch c.Type {
+	case TypeTap, TypeMouseDown, TypeMouseUp:
+		if c.Button != buttonLeft && c.Button != buttonRight {
+			return errInvalidButton
+		}
+	}
+
 	switch c.Type {
 	case TypeTap:
 		return d.injector.Tap(c.Button, c.X, c.Y)
@@ -125,9 +133,6 @@ func (d *Dispatcher) Dispatch(raw []byte) error {
 }
 
 func (d *Dispatcher) mouseDown(c Command) error {
-	if c.Button != buttonLeft && c.Button != buttonRight {
-		return errInvalidButton
-	}
 	if _, held := d.buttons[c.Button]; !held && len(d.buttons) >= maxHeldButtons {
 		return errTooManyButtons
 	}

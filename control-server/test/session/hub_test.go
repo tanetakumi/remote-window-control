@@ -273,19 +273,18 @@ func TestRejectedInputIsReportedWithoutEndingTheSession(t *testing.T) {
 	f.waitForEvents(t, 1)
 }
 
-// Input has exactly one path. It must be refused on the WebSocket, and told so,
-// rather than being acted on or silently dropped.
-func TestInputOnTheWebSocketIsRejected(t *testing.T) {
+// The WebSocket carries signaling only. Anything else, including an input
+// command, is a protocol error and never reaches the injector.
+func TestUnsupportedSignalingEndsTheSession(t *testing.T) {
 	f := newFixture(t)
 	conn := f.connect(t)
 
-	for i := 0; i < 2; i++ { // the session survives the first rejection
-		send(t, conn, map[string]any{"type": "input.tap", "button": "left", "x": 0.5, "y": 0.5})
-		r := readUntil(t, conn, "input.error")
-		if !strings.Contains(r.Message, "control data channel") {
-			t.Fatalf("message = %q", r.Message)
-		}
+	send(t, conn, map[string]any{"type": "input.tap", "button": "left", "x": 0.5, "y": 0.5})
+	r := readUntil(t, conn, "error")
+	if r.Message != "unsupported signaling message" {
+		t.Fatalf("message = %q", r.Message)
 	}
+	expectClosed(t, conn)
 	if events := f.injector.Events(); len(events) != 0 {
 		t.Fatalf("input from the WebSocket reached the injector: %v", events)
 	}
