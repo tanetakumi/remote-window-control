@@ -832,7 +832,7 @@ body {
   pointer-events: none;
 }
 
-/* Only this small bar intercepts touches; the surrounding video stays usable. */
+/* Only this small palette intercepts touches; the surrounding video stays usable. */
 #special-keys-palette {
   --palette-safe-left: env(safe-area-inset-left, 0px);
   --palette-safe-right: env(safe-area-inset-right, 0px);
@@ -842,7 +842,6 @@ body {
   left: 0;
   z-index: 5;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   max-width: calc(100% - 16px - var(--palette-safe-left) - var(--palette-safe-right));
@@ -870,18 +869,20 @@ body {
   touch-action: none;
 }
 
-/* Inverted-T layout like a physical keyboard: Up above Down, Left and Right beside it. */
-#special-keys-palette .arrow-pad {
+/* All six keys share aligned columns: BS / Shift+Enter / Up, then Left / Down / Right. */
+#special-keys-palette .special-keys-grid {
   display: grid;
   flex-shrink: 0;
   grid-template-columns: repeat(3, 44px);
+  grid-template-rows: repeat(2, 44px);
   grid-template-areas:
-    ". up ."
+    "backspace shift-enter up"
     "left down right";
   gap: 6px;
-  margin-left: 6px;
 }
 
+#send-backspace { grid-area: backspace; }
+#send-shift-enter { grid-area: shift-enter; }
 #send-arrow-up { grid-area: up; }
 #send-arrow-left { grid-area: left; }
 #send-arrow-down { grid-area: down; }
