@@ -66,7 +66,7 @@ func idle(t *testing.T, sink *recordingSink) int {
 
 func TestStaticWindowSlowsToAHeartbeatAfterARefresh(t *testing.T) {
 	_, sink := startStreaming(t, singleFrame(fakeFrameSize))
-	// One change is encoded for a second at 10 fps, give or take a tick.
+	// One change is encoded for a second at DefaultFPS, give or take a tick.
 	if count := idle(t, sink); count < media.DefaultFPS-2 || count > media.DefaultFPS+2 {
 		t.Fatalf("a single change produced %d samples", count)
 	}

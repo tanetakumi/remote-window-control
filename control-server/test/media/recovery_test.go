@@ -12,8 +12,11 @@ import (
 	"share-app-host/internal/media"
 )
 
-// VP8 frame type is bit zero of the uncompressed header (RFC 6386, 9.1).
-func keyframe(data []byte) bool { return len(data) >= 10 && data[0]&1 == 0 }
+// A profile-0 VP9 keyframe starts with the frame marker, no show-existing
+// flag, frame_type=0, and the keyframe sync code (spec sections 6.2 and 6.2.1).
+func keyframe(data []byte) bool {
+	return len(data) >= 4 && data[0]&0xfc == 0x80 && bytes.Equal(data[1:4], []byte{0x49, 0x83, 0x42})
+}
 
 func (s *recordingSink) keyframes() int {
 	s.mu.Lock()
@@ -88,10 +91,10 @@ func decodeKeyframe(t *testing.T, payload []byte, size int) {
 	header := make([]byte, 32)
 	copy(header, "DKIF")
 	binary.LittleEndian.PutUint16(header[6:], 32)
-	copy(header[8:], "VP80")
+	copy(header[8:], "VP90")
 	binary.LittleEndian.PutUint16(header[12:], uint16(size))
 	binary.LittleEndian.PutUint16(header[14:], uint16(size))
-	binary.LittleEndian.PutUint32(header[16:], 10)
+	binary.LittleEndian.PutUint32(header[16:], media.DefaultFPS)
 	binary.LittleEndian.PutUint32(header[20:], 1)
 	binary.LittleEndian.PutUint32(header[24:], 1)
 	stream.Write(header)

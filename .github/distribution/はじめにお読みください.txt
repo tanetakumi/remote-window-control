@@ -5,7 +5,7 @@ Windows 版 Share App の使い方
 
 - Windows 11 x64
 - .NET 10 x64 Runtime
-- FFmpeg（libvpx エンコーダー対応版）。PATH に追加するか、ffmpeg.exe を share-host.exe と同じフォルダーに置いてください。
+- FFmpeg（libvpx-vp9 エンコーダー対応版）。PATH に追加するか、ffmpeg.exe を share-host.exe と同じフォルダーに置いてください。
 
 .NET 10 の入手先（Microsoft 公式）:
     https://dotnet.microsoft.com/en-us/download/dotnet/10.0
@@ -13,7 +13,7 @@ Windows 版 Share App の使い方
 
 FFmpeg の Windows 用 EXE の入手先（FFmpeg 公式サイトから案内されている gyan.dev）:
     https://www.gyan.dev/ffmpeg/builds/
-    「release builds」の ffmpeg-release-essentials.zip をダウンロードします。この版は libvpx に対応しています。展開したフォルダーの bin 内にある ffmpeg.exe を使ってください。
+    「release builds」の ffmpeg-release-essentials.zip をダウンロードします。配布元はこの版に libvpx を含むと案内しています。VP9 用の libvpx-vp9 が使えることを、PowerShell で ffmpeg -hide_banner -encoders | Select-String libvpx-vp9 を実行して確認してください。展開したフォルダーの bin 内にある ffmpeg.exe を使ってください。
 
 ZIP を展開し、展開先の .env と share-host.exe を使います。.env は share-host.exe と同じフォルダーにあります。初期設定は次のとおりです。
 

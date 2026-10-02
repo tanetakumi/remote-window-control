@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	pion "github.com/pion/webrtc/v4"
 
 	"share-app-host/internal/input"
 	"share-app-host/internal/media"
@@ -33,15 +34,21 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	return newFixtureWith(t, session.Options{})
+}
+
+// newFixtureWith serves a Hub with opts, filling in the collaborators tests
+// share: a recording injector, a capture that cannot open and no target.
+func newFixtureWith(t *testing.T, opts session.Options) *fixture {
+	t.Helper()
 	injector := &testutil.RecordingInjector{}
-	hub := session.NewHub(session.Options{
-		Dispatcher: input.NewDispatcher(injector),
-		Source: func(context.Context, uint64) (media.FrameStream, error) {
-			return nil, errors.New("no capture in tests")
-		},
-		Target:  noTarget{},
-		Encoder: media.DefaultEncoderConfig("ffmpeg"),
-	})
+	opts.Dispatcher = input.NewDispatcher(injector)
+	opts.Source = func(context.Context, uint64) (media.FrameStream, error) {
+		return nil, errors.New("no capture in tests")
+	}
+	opts.Target = noTarget{}
+	opts.Encoder = media.DefaultEncoderConfig("ffmpeg")
+	hub := session.NewHub(opts)
 	server := httptest.NewServer(hub)
 	t.Cleanup(server.Close) // runs after hub.Close
 	t.Cleanup(hub.Close)
@@ -69,12 +76,15 @@ func (f *fixture) dial(t *testing.T, headers http.Header) (*websocket.Conn, *htt
 	return conn, resp, err
 }
 
+// connect opens a WebSocket and reads the host's first message, the session
+// configuration.
 func (f *fixture) connect(t *testing.T) *websocket.Conn {
 	t.Helper()
 	conn, _, err := f.dial(t, f.headers)
 	if err != nil {
 		t.Fatal(err)
 	}
+	readUntil(t, conn, "session.config")
 	return conn
 }
 
@@ -86,9 +96,10 @@ func send(t *testing.T, conn *websocket.Conn, v any) {
 }
 
 type reply struct {
-	Type    string `json:"type"`
-	SDP     string `json:"sdp"`
-	Message string `json:"message"`
+	Type            string `json:"type"`
+	SDP             string `json:"sdp"`
+	Message         string `json:"message"`
+	StatsIntervalMs int64  `json:"statsIntervalMs"`
 }
 
 // readUntil reads replies until one has the wanted type, skipping ICE
@@ -179,13 +190,42 @@ func TestCloseDisconnectsTheActiveConnectionAndRefusesNewOnes(t *testing.T) {
 	}
 }
 
+func TestSessionConfigAnnouncesTheStatsIntervalFirst(t *testing.T) {
+	f := newFixtureWith(t, session.Options{StatsInterval: 5 * time.Second})
+	conn, _, err := f.dial(t, f.headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := readUntil(t, conn, "session.config"); r.StatsIntervalMs != 5000 {
+		t.Fatalf("config = %+v", r)
+	}
+
+	// Without a stats interval the browser is not asked to report.
+	f = newFixture(t)
+	if conn, _, err = f.dial(t, f.headers); err != nil {
+		t.Fatal(err)
+	}
+	if r := readUntil(t, conn, "session.config"); r.StatsIntervalMs != 0 {
+		t.Fatalf("default config = %+v", r)
+	}
+}
+
+func TestClientStatsAreAcceptedWithoutEndingTheSession(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+
+	send(t, conn, map[string]any{"type": "client.stats", "report": map[string]float64{"kbps": 120, "packetsLost": 3}})
+	send(t, conn, map[string]string{"type": "webrtc.offer", "sdp": testutil.BrowserOffer(t)})
+	readUntil(t, conn, "webrtc.answer")
+}
+
 func TestOfferIsAnswered(t *testing.T) {
 	f := newFixture(t)
 	conn := f.connect(t)
 
 	send(t, conn, map[string]string{"type": "webrtc.offer", "sdp": testutil.BrowserOffer(t)})
 	answer := readUntil(t, conn, "webrtc.answer")
-	for _, want := range []string{"m=video", "VP8"} {
+	for _, want := range []string{"m=video", "VP9"} {
 		if !strings.Contains(answer.SDP, want) {
 			t.Errorf("answer lacks %q", want)
 		}
@@ -303,5 +343,21 @@ func TestDisconnectReleasesHeldInput(t *testing.T) {
 	events := f.waitForEvents(t, 4)
 	if events[2] != "up:Enter" || events[3] != "up:left:0.5,0.5" {
 		t.Fatalf("release order: %v", events)
+	}
+}
+
+func TestVP9UnsupportedOfferIsReportedAndEndsTheSession(t *testing.T) {
+	f := newFixture(t)
+	conn := f.connect(t)
+	codec := pion.RTPCodecParameters{
+		RTPCodecCapability: pion.RTPCodecCapability{MimeType: pion.MimeTypeVP8, ClockRate: 90000},
+		PayloadType:        96,
+	}
+	send(t, conn, map[string]string{"type": "webrtc.offer", "sdp": testutil.BrowserOffer(t, codec)})
+	if r := readUntil(t, conn, "error"); !strings.Contains(r.Message, "does not support VP9 profile 0") {
+		t.Fatalf("unexpected unsupported-codec error: %+v", r)
+	}
+	if _, _, err := conn.ReadMessage(); err == nil {
+		t.Fatal("session remained open after the offer failed")
 	}
 }

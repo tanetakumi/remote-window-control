@@ -49,7 +49,7 @@ func (s *staticStream) Close() error {
 	return nil
 }
 
-// videoPacket is a received RTP packet that starts a VP8 frame.
+// videoPacket is a received RTP packet that starts a VP9 frame.
 type videoPacket struct {
 	at        time.Time
 	timestamp uint32
@@ -57,6 +57,12 @@ type videoPacket struct {
 }
 
 func TestBrowserKeyframeRequestRestoresAnIdleStream(t *testing.T) {
+	for _, feedback := range []string{"PLI", "FIR"} {
+		t.Run(feedback, func(t *testing.T) { testBrowserKeyframeRecovery(t, feedback) })
+	}
+}
+
+func testBrowserKeyframeRecovery(t *testing.T, feedback string) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
 	}
@@ -85,12 +91,12 @@ func TestBrowserKeyframeRequestRestoresAnIdleStream(t *testing.T) {
 				if err != nil {
 					return
 				}
-				var vp8 codecs.VP8Packet
-				payload, err := vp8.Unmarshal(packet.Payload)
-				if err != nil || vp8.S != 1 || vp8.PID != 0 || len(payload) == 0 {
+				var vp9 codecs.VP9Packet
+				payload, err := vp9.Unmarshal(packet.Payload)
+				if err != nil || !vp9.B || len(payload) == 0 {
 					continue
 				}
-				frames <- videoPacket{at: time.Now(), timestamp: packet.Timestamp, keyframe: payload[0]&1 == 0}
+				frames <- videoPacket{at: time.Now(), timestamp: packet.Timestamp, keyframe: !vp9.P}
 			}
 		}()
 	case <-time.After(10 * time.Second):
@@ -119,7 +125,11 @@ quiet:
 		}
 	}
 
-	if err := browser.PC.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}}); err != nil {
+	var request rtcp.Packet = &rtcp.PictureLossIndication{MediaSSRC: ssrc}
+	if feedback == "FIR" {
+		request = &rtcp.FullIntraRequest{FIR: []rtcp.FIREntry{{SSRC: ssrc, SequenceNumber: 1}}}
+	}
+	if err := browser.PC.WriteRTCP([]rtcp.Packet{request}); err != nil {
 		t.Fatal(err)
 	}
 	// Heartbeat delta frames may arrive before the answer.

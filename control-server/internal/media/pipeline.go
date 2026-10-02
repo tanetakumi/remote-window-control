@@ -32,6 +32,8 @@ type Pipeline struct {
 	// keyframeRequest is the time of the oldest unanswered browser keyframe
 	// request in Unix nanoseconds, or zero.
 	keyframeRequest atomic.Int64
+	// keyframeRequests counts every browser request, answered or not.
+	keyframeRequests atomic.Uint64
 }
 
 const (
@@ -40,6 +42,7 @@ const (
 	keyframeRequestInterval = time.Second
 
 	// idleHeartbeat is how often an unchanged window is still encoded.
+	// This receive-side timeout applies to VP9 as well as other codecs.
 	// libwebrtc requests a keyframe when no decodable frame arrives for 3 s
 	// while packets came within 5 s (VideoReceiveStream2::
 	// OnDecodableFrameTimeout), so a fully silent stream would turn into a
@@ -60,6 +63,7 @@ func NewPipeline(source Source, target Target, sink SampleWriter, encoder Encode
 // after losing video. A keyframe written after the request answers it;
 // otherwise the encoder is restarted, which always begins with a keyframe.
 func (p *Pipeline) RequestKeyframe() {
+	p.keyframeRequests.Add(1)
 	p.keyframeRequest.CompareAndSwap(0, time.Now().UnixNano())
 }
 
@@ -111,7 +115,8 @@ func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-ch
 		p.logf("capture stopped hwnd=%d elapsed=%s frames=%d encoded=%d forced_keyframes=%d samples=%d bytes=%d keyframes=%d keyframe_bytes=%d error=%v",
 			handle, time.Since(started).Round(time.Millisecond), frames, encoded, forced, total.samples, total.bytes, total.keyframes, total.keyframeBytes, result)
 	}()
-	stats := statsLogger{interval: p.StatsInterval, logf: p.logf, handle: handle, since: started}
+	stats := statsLogger{interval: p.StatsInterval, logf: p.logf, handle: handle, since: started,
+		requests: p.keyframeRequests.Load()}
 	ctx, cancel := context.WithCancel(parent)
 	var watcher sync.WaitGroup
 	watcher.Add(1)
@@ -160,7 +165,7 @@ func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-ch
 		if ctx.Err() != nil {
 			return pump.err()
 		}
-		stats.logIfDue(frames, encoded, forced, sink.snapshot())
+		stats.logIfDue(frames, encoded, forced, p.keyframeRequests.Load(), sink.snapshot())
 
 		frame, ok := pump.next()
 		if ok {

@@ -60,7 +60,8 @@ func field(t *testing.T, line, name string) int {
 func TestStatsIntervalLogsEncodedBytesAndKeyframes(t *testing.T) {
 	requireFFmpeg(t)
 	logs := captureLog(t)
-	pipeline := media.NewPipeline(newFakeSource(steady(fakeFrameSize)).source(), newFakeTarget(), &recordingSink{}, defaultEncoder())
+	sink := &recordingSink{}
+	pipeline := media.NewPipeline(newFakeSource(steady(fakeFrameSize)).source(), newFakeTarget(), sink, defaultEncoder())
 	pipeline.StatsInterval = 300 * time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -84,13 +85,24 @@ func TestStatsIntervalLogsEncodedBytesAndKeyframes(t *testing.T) {
 		t.Fatalf("stats line %q", first)
 	}
 
+	eventually(t, 3*time.Second, "delta frames", func() bool { return sink.encoded() >= 4 })
 	close(changed)
 	if err := receive(t, done, 4*time.Second, "RunWindow to stop"); err != nil {
 		t.Fatal(err)
 	}
 	stopped := regexp.MustCompile(`capture stopped hwnd=7 .*`).FindString(logs.String())
-	if stopped == "" || field(t, stopped, "keyframes") < 1 || field(t, stopped, "encoded") < field(t, stopped, "samples") {
+	if stopped == "" || field(t, stopped, "keyframes") != 1 || field(t, stopped, "encoded") < field(t, stopped, "samples") {
 		t.Fatalf("stop line %q", stopped)
+	}
+	var total, keyframeBytes int
+	for _, sample := range sink.snapshot() {
+		total += len(sample.Data)
+		if keyframe(sample.Data) {
+			keyframeBytes += len(sample.Data)
+		}
+	}
+	if field(t, stopped, "bytes") != total || field(t, stopped, "keyframe_bytes") != keyframeBytes {
+		t.Fatalf("VP9 byte counters do not match the samples: %q", stopped)
 	}
 }
 

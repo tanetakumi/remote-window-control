@@ -20,9 +20,9 @@ On the Windows PC:
 
 - Windows 11 x64
 - [.NET 10 x64 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
-- FFmpeg with the `libvpx` encoder, available on `PATH` or beside `share-host.exe`
+- FFmpeg with the `libvpx-vp9` encoder, available on `PATH` or beside `share-host.exe`
 
-On the phone or tablet, use a modern browser. The host and browser must be able to reach each other over the network.
+On the phone or tablet, use a browser that offers WebRTC VP9 profile 0. The host and browser must be able to reach each other over the network.
 
 ## Download and run
 
@@ -53,7 +53,7 @@ The build script creates a Windows x64 distribution in `dist/share-app/` and run
 - Node.js `>=22.12.0 <25`
 - .NET SDK `10.0.401`
 - Go `1.27.1`
-- FFmpeg with the `libvpx` encoder
+- FFmpeg with the `libvpx-vp9` encoder
 
 From the repository root, run:
 
@@ -70,7 +70,15 @@ The optional `.env` file sits beside `share-host.exe`. Environment variables ove
 | Setting | Default | Description |
 | --- | --- | --- |
 | `SHARE_APP_ADDR` | `127.0.0.1:8443` | HTTP listen address. HTTPS must be provided by a separate trusted proxy. |
-| `SHARE_APP_CAPTURE_STATS` | `off` | Capture diagnostics: `off`, `on`, or `verify`. `verify` adds CPU-intensive pixel checks. |
+| `SHARE_APP_CAPTURE_STATS` | `off` | Capture diagnostics: `off`, `on`, or `verify`. `verify` adds CPU-intensive pixel checks. Any value other than `off` also logs the browser's receive statistics. |
+
+A disconnected media connection gets a 5-second grace period to recover. Input commands are buffered while the send buffer is full; a backlog lasting 5 seconds or exceeding 256 queued commands ends the connection to avoid applying stale input.
+
+## Video encoding
+
+Video uses VP9 profile 0 at 8 fps, with low-latency screen encoding, CRF 31 and target bitrate 6M. The target bitrate is not a limit on total network traffic or keyframe bursts. After a pixel change, the encoder runs at full rate for one second, then sends an idle delta frame about once per second. Browser PLI/FIR requests still trigger recovery keyframes.
+
+The host logs the offer's codec lines to check browser VP9 support. A browser without VP9 profile 0 receives a connection error; there is no VP8 fallback. Before tuning quality or idle timing, compare static text, typing, menus and scrolling on Windows over a connection limited to about 1 Mbps, using `SHARE_APP_CAPTURE_STATS=on`. Check host CPU, receive statistics and phone heat/battery use.
 
 ## Known limitation
 

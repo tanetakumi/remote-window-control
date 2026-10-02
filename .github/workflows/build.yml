@@ -83,7 +83,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $encoders = & $ffmpegPath -hide_banner -encoders
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not ($encoders -match '\s libvpx\s')) { throw "ffmpeg must support the libvpx encoder" }
+          if (-not ($encoders -match '\s libvpx-vp9\s')) { throw "ffmpeg must support the libvpx-vp9 encoder" }
       - name: Build and test control server
         working-directory: control-server
         run: |

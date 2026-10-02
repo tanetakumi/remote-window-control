@@ -79,7 +79,7 @@ try {
   requireVersion("Go", go.match(/^go version go(\S+) /)?.[1], goVersion);
   inspect("ffmpeg", ["-version"], { stdio: ["ignore", "pipe", "pipe"] });
   const encoders = inspect("ffmpeg", ["-hide_banner", "-encoders"]);
-  if (!/^\s*V\S*\s+libvpx\s/m.test(encoders)) throw new Error("ffmpeg must support the libvpx encoder, as required by CI.");
+  if (!/^\s*V\S*\s+libvpx-vp9\s/m.test(encoders)) throw new Error("ffmpeg must support the libvpx-vp9 encoder, as required by CI.");
 
   mkdirSync(dist, { recursive: true });
   staging = mkdtempSync(join(dist, ".build-"));
@@ -125,7 +125,7 @@ try {
     console.log("Keeping the existing dist/share-app/.env.");
   }
   console.log(`\nWindows x64 distribution ready: ${output}`);
-  console.log("Run share-host.exe on Windows with the .NET 10 x64 runtime and ffmpeg (libvpx) available.");
+  console.log("Run share-host.exe on Windows with the .NET 10 x64 runtime and ffmpeg (libvpx-vp9) available.");
 } catch (error) {
   console.error(`\nBuild failed: ${error.message}`);
   process.exitCode = 1;

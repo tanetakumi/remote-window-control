@@ -8,7 +8,7 @@ import (
 )
 
 // sampleCounter counts the samples and bytes written to the track, separating
-// VP8 keyframes, and logs the first sample, so a log shows whether video ever
+// VP9 keyframes, and logs the first sample, so a log shows whether video ever
 // left the host. The counts cover encoded payload only, not RTP or transport
 // overhead.
 type sampleCounter struct {
@@ -33,8 +33,10 @@ func (s *sampleCounter) WriteSample(sample pionmedia.Sample) error {
 	}
 	size := uint64(len(sample.Data))
 	s.bytes.Add(size)
-	// A VP8 frame tag with a clear low bit marks a keyframe (RFC 6386 9.1).
-	if size > 0 && sample.Data[0]&1 == 0 {
+	// VP9 uncompressed header (spec section 6.2), for our profile-0 output:
+	// frame_marker=2, profile=0, show_existing_frame=0, frame_type=0.
+	// A show-existing frame only displays a reference and cannot answer a PLI.
+	if size > 0 && sample.Data[0]&0xfc == 0x80 {
 		s.keyframes.Add(1)
 		s.keyframeBytes.Add(size)
 		s.lastKeyframe.Store(time.Now().UnixNano())
@@ -63,10 +65,12 @@ type statsLogger struct {
 	since    time.Time
 
 	frames, encoded, forced uint64
-	samples                 sampleCounts
+	// requests counts browser keyframe requests (PLI or FIR).
+	requests uint64
+	samples  sampleCounts
 }
 
-func (l *statsLogger) logIfDue(frames, encoded, forced uint64, samples sampleCounts) {
+func (l *statsLogger) logIfDue(frames, encoded, forced, requests uint64, samples sampleCounts) {
 	if l.interval <= 0 {
 		return
 	}
@@ -75,10 +79,10 @@ func (l *statsLogger) logIfDue(frames, encoded, forced uint64, samples sampleCou
 		return
 	}
 	bytes := samples.bytes - l.samples.bytes
-	l.logf("media stats hwnd=%d interval_ms=%d frames=%d encoded=%d forced_keyframes=%d samples=%d bytes=%d kbps=%.1f keyframes=%d keyframe_bytes=%d",
-		l.handle, elapsed.Milliseconds(), frames-l.frames, encoded-l.encoded, forced-l.forced,
+	l.logf("media stats hwnd=%d interval_ms=%d frames=%d encoded=%d keyframe_requests=%d forced_keyframes=%d samples=%d bytes=%d kbps=%.1f keyframes=%d keyframe_bytes=%d",
+		l.handle, elapsed.Milliseconds(), frames-l.frames, encoded-l.encoded, requests-l.requests, forced-l.forced,
 		samples.samples-l.samples.samples, bytes, float64(bytes)*8/elapsed.Seconds()/1000,
 		samples.keyframes-l.samples.keyframes, samples.keyframeBytes-l.samples.keyframeBytes)
 	l.since = time.Now()
-	l.frames, l.encoded, l.forced, l.samples = frames, encoded, forced, samples
+	l.frames, l.encoded, l.forced, l.requests, l.samples = frames, encoded, forced, requests, samples
 }

@@ -28,17 +28,37 @@ func newPeer(t *testing.T, opts media.PeerOptions) *media.Peer {
 	return peer
 }
 
-func TestPeerAnswersABrowserOfferWithAVP8VideoTrack(t *testing.T) {
+func TestPeerAnswersABrowserOfferWithAVP9VideoTrack(t *testing.T) {
 	peer := newPeer(t, media.PeerOptions{})
 
 	answer, err := peer.AcceptOffer(testutil.BrowserOffer(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"m=video", "VP8", "m=application"} {
+	for _, want := range []string{"m=video", "VP9/90000", "profile-id=0", "m=application"} {
 		if !strings.Contains(answer, want) {
 			t.Errorf("answer lacks %q:\n%s", want, answer)
 		}
+	}
+	for _, unwanted := range []string{"VP8", "H264", "AV1", "profile-id=2"} {
+		if strings.Contains(answer, unwanted) {
+			t.Errorf("answer advertises %q, which the host cannot encode", unwanted)
+		}
+	}
+}
+
+func TestPeerRejectsOffersWithoutVP9Profile0(t *testing.T) {
+	for _, codec := range []pion.RTPCodecParameters{
+		{RTPCodecCapability: pion.RTPCodecCapability{MimeType: pion.MimeTypeVP8, ClockRate: 90000}, PayloadType: 96},
+		{RTPCodecCapability: pion.RTPCodecCapability{MimeType: pion.MimeTypeVP9, ClockRate: 90000, SDPFmtpLine: "profile-id=2"}, PayloadType: 100},
+	} {
+		t.Run(codec.MimeType+codec.SDPFmtpLine, func(t *testing.T) {
+			peer := newPeer(t, media.PeerOptions{})
+			answer, err := peer.AcceptOffer(testutil.BrowserOffer(t, codec))
+			if err == nil || !strings.Contains(err.Error(), "does not support VP9 profile 0") || answer != "" {
+				t.Fatalf("unsupported offer: error=%v answer=%s", err, answer)
+			}
+		})
 	}
 }
 
@@ -92,5 +112,24 @@ func TestPeerCloseIsIdempotent(t *testing.T) {
 	second := peer.Close()
 	if fmt.Sprint(first) != fmt.Sprint(second) {
 		t.Fatalf("Close results differ: %v vs %v", first, second)
+	}
+}
+
+func TestPeerUsesTheOfferedVP9PayloadType(t *testing.T) {
+	for _, profile := range []string{"profile-id=0", ""} {
+		t.Run(profile, func(t *testing.T) {
+			peer := newPeer(t, media.PeerOptions{})
+			codec := pion.RTPCodecParameters{
+				RTPCodecCapability: pion.RTPCodecCapability{MimeType: pion.MimeTypeVP9, ClockRate: 90000, SDPFmtpLine: profile},
+				PayloadType:        120,
+			}
+			answer, err := peer.AcceptOffer(testutil.BrowserOffer(t, codec))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(answer, "a=rtpmap:120 VP9/90000") {
+				t.Fatalf("answer does not use the offered payload type: %s", answer)
+			}
+		})
 	}
 }

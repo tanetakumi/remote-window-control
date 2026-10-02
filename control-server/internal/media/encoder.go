@@ -15,14 +15,13 @@ import (
 	"share-app-host/internal/tailbuf"
 )
 
-// Baseline encoder settings. Keep them until interactive Windows measurements
-// justify tuning; see the README.
+// Fixed defaults for low-latency window streaming; see the README.
 const (
-	DefaultFPS     = 10
+	DefaultFPS     = 8
 	DefaultBitrate = "6M"
-	DefaultCRF     = 10
+	DefaultCRF     = 31
 
-	// keyframeInterval is the libvpx keyframe interval in frames: large
+	// keyframeInterval is the libvpx-vp9 keyframe interval in frames: large
 	// enough that keyframes come only from encoder starts, which also answer
 	// browser keyframe requests (see Pipeline). A periodic keyframe of a text
 	// screen costs hundreds of kilobytes, a static delta frame a few hundred
@@ -34,7 +33,7 @@ const (
 	encoderStopWait = 2 * time.Second
 )
 
-// EncoderConfig describes the ffmpeg VP8 encoder.
+// EncoderConfig describes the ffmpeg VP9 encoder.
 type EncoderConfig struct {
 	// FFmpegPath is the ffmpeg executable; a bare name is looked up on PATH.
 	FFmpegPath string
@@ -52,7 +51,7 @@ func DefaultEncoderConfig(ffmpegPath string) EncoderConfig {
 }
 
 // Args returns the ffmpeg arguments for raw BGRA frames of the given size read
-// from stdin and an IVF/VP8 stream written to stdout.
+// from stdin and an IVF/VP9 stream written to stdout.
 func (c EncoderConfig) Args(width, height int) []string {
 	return []string{
 		"-hide_banner", "-loglevel", "error",
@@ -62,12 +61,16 @@ func (c EncoderConfig) Args(width, height int) []string {
 		"-i", "pipe:0",
 		"-an",
 		"-vf", "format=yuv420p",
-		"-c:v", "libvpx",
+		"-c:v", "libvpx-vp9",
+		"-profile:v", "0",
 		"-b:v", c.Bitrate,
 		"-crf", strconv.Itoa(c.CRF),
 		"-deadline", "realtime",
 		"-cpu-used", "4",
 		"-auto-alt-ref", "0",
+		"-lag-in-frames", "0",
+		"-row-mt", "1",
+		"-tune-content", "screen",
 		"-g", strconv.Itoa(keyframeInterval),
 		"-f", "ivf", "pipe:1",
 	}

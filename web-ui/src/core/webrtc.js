@@ -1,3 +1,10 @@
+import { createInputSender } from "./input-sender.js";
+import { intervalReport, readConnectionStats } from "./stats.js";
+
+// How long the connection may stay "disconnected" (as during a brief network
+// change) before it is given up; the host waits as long.
+const DISCONNECT_GRACE_MS = 5000;
+
 function makeSignalingUrl() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/ws`;
@@ -15,13 +22,21 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
     let hasTrack = false;
     let hasVideoFrame = false;
     let statsTimer;
-    let lastBytes;
-    let lastTime;
+    let graceTimer;
+    let statsIntervalMs = 0;
+    let lastBitrate;
+    let lastReport;
     let messageChain = Promise.resolve();
+    // Conditions shown in the status once connected.
+    const condition = { reconnecting: false, inputDelayed: false };
 
     const status = (state, message) => onStatus?.(state, message);
     const timeout = window.setTimeout(() => fail(new Error("Connection timed out. Check host and media connectivity.")), 15000);
     const waitingTimer = window.setTimeout(() => { if (!closed && !hasTrack) status("connecting", "Waiting for video…"); }, 3000);
+    const input = createInputSender(inputChannel, {
+      onCongestion(delayed) { condition.inputDelayed = delayed; renderStatus(); },
+      onFail: (error) => fail(error),
+    });
 
     function close() {
       if (closed) return;
@@ -29,9 +44,11 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
       window.clearTimeout(timeout);
       window.clearTimeout(waitingTimer);
       window.clearTimeout(statsTimer);
+      window.clearTimeout(graceTimer);
       videoElement.removeEventListener("loadeddata", onVideoFrame);
       signal?.removeEventListener("abort", onAbort);
       peer.ontrack = peer.onicecandidate = peer.onconnectionstatechange = null;
+      input.close();
       inputChannel.close();
       peer.close();
       signaling.close();
@@ -51,36 +68,38 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
       if (ready) onDisconnect?.(error);
     }
 
-    async function pollBitrate() {
+    function renderStatus() {
+      if (!ready || closed) return;
+      if (condition.reconnecting) status("connecting", "Reconnecting…");
+      else if (condition.inputDelayed) status("connecting", "Input delayed…");
+      else status("connected", "Connected");
+    }
+
+    async function pollStats() {
       try {
-        const stats = await peer.getStats();
+        const sample = readConnectionStats(await peer.getStats());
         if (closed) return;
-        let bytes = 0;
-        stats.forEach((report) => {
-          if (report.type === "inbound-rtp" && (report.kind === "video" || report.mediaType === "video")) bytes += report.bytesReceived ?? 0;
-        });
-        const now = performance.now();
-        if (lastTime !== undefined) onBitrate?.(Math.max(0, Math.round((bytes - lastBytes) * 8 / (now - lastTime))));
-        lastBytes = bytes;
-        lastTime = now;
+        Object.assign(sample.counters, input.stats);
+        sample.time = performance.now();
+        const bytes = sample.counters.bytesReceived ?? 0;
+        if (lastBitrate) onBitrate?.(Math.max(0, Math.round((bytes - lastBitrate.bytes) * 8 / (sample.time - lastBitrate.time))));
+        lastBitrate = { time: sample.time, bytes };
+        if (statsIntervalMs > 0 && !lastReport) lastReport = sample;
+        else if (statsIntervalMs > 0 && sample.time - lastReport.time >= statsIntervalMs) {
+          if (signaling.readyState === WebSocket.OPEN) {
+            signaling.send(JSON.stringify({ type: "client.stats", report: intervalReport(lastReport, sample) }));
+          }
+          lastReport = sample;
+        }
       } catch { /* Closing a peer may interrupt getStats. */ }
-      if (!closed) statsTimer = window.setTimeout(pollBitrate, 1000);
+      if (!closed) statsTimer = window.setTimeout(pollStats, 1000);
     }
 
     const remote = {
       close,
       sendControl(payload) {
         if (closed || !ready) return false;
-        const serialized = JSON.stringify(payload);
-        try {
-          // Input travels only on the control data channel; the WebSocket carries signaling.
-          if (inputChannel.readyState === "open" && inputChannel.bufferedAmount < 64 * 1024) {
-            inputChannel.send(serialized);
-            return true;
-          }
-          fail(new Error("Control connection is congested. Reconnect to continue."));
-        } catch (error) { fail(error); }
-        return false;
+        return input.send(payload);
       },
     };
 
@@ -90,8 +109,8 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
       ready = true;
       window.clearTimeout(timeout);
       window.clearTimeout(waitingTimer);
-      status("connected", "Connected");
-      if (onBitrate) pollBitrate();
+      renderStatus();
+      if (onBitrate || statsIntervalMs > 0) pollStats();
       resolve(remote);
     }
 
@@ -120,8 +139,21 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
       checkReady();
     };
     peer.onconnectionstatechange = () => {
-      if (["failed", "disconnected", "closed"].includes(peer.connectionState)) fail(new Error("Media connection lost. Select a window to reconnect."));
-      else checkReady();
+      const state = peer.connectionState;
+      if (state === "failed" || state === "closed") {
+        fail(new Error("Media connection lost. Select a window to reconnect."));
+        return;
+      }
+      // A brief network change passes through "disconnected"; give it time.
+      condition.reconnecting = state === "disconnected";
+      if (condition.reconnecting) {
+        graceTimer ??= window.setTimeout(() => fail(new Error("Media connection lost. Select a window to reconnect.")), DISCONNECT_GRACE_MS);
+      } else {
+        window.clearTimeout(graceTimer);
+        graceTimer = undefined;
+      }
+      renderStatus();
+      checkReady();
     };
     peer.onicecandidate = (event) => {
       if (!closed && event.candidate && signaling.readyState === WebSocket.OPEN) {
@@ -144,7 +176,9 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
         const message = JSON.parse(event.data);
         if (message.type === "error") throw new Error(message.message || "Host connection failed.");
         if (message.type === "input.error") { onInputError?.(message.message || "The host could not apply the input."); return; }
-        if (message.type === "webrtc.answer") {
+        if (message.type === "session.config") {
+          statsIntervalMs = message.statsIntervalMs > 0 ? message.statsIntervalMs : 0;
+        } else if (message.type === "webrtc.answer") {
           await peer.setRemoteDescription({ type: "answer", sdp: message.sdp });
           for (const candidate of pendingICE.splice(0)) await peer.addIceCandidate(candidate);
         } else if (message.type === "webrtc.ice" && message.candidate) {

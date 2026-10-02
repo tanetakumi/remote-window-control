@@ -15,6 +15,9 @@ const (
 	controlChannelLabel = "control"
 	// maxPendingICE bounds candidates buffered before the offer arrives.
 	maxPendingICE = 128
+	// disconnectGrace is how long the connection may stay disconnected, as
+	// during a brief network change, before the session is ended.
+	disconnectGrace = 5 * time.Second
 )
 
 var (
@@ -45,6 +48,7 @@ type PeerOptions struct {
 // Pipeline, and a data channel for control messages.
 type Peer struct {
 	pc      *pion.PeerConnection
+	video   *pion.RTPTransceiver
 	cancel  context.CancelFunc
 	workers sync.WaitGroup
 
@@ -80,6 +84,8 @@ func NewPeer(opts PeerOptions) (*Peer, error) {
 
 	connected := make(chan struct{})
 	var connectedOnce sync.Once
+	var graceMu sync.Mutex
+	var grace *time.Timer
 	pc.OnICECandidate(func(candidate *pion.ICECandidate) {
 		if candidate != nil && ctx.Err() == nil {
 			opts.OnICE(candidate.ToJSON())
@@ -90,10 +96,33 @@ func NewPeer(opts PeerOptions) (*Peer, error) {
 		switch state {
 		case pion.PeerConnectionStateConnected:
 			connectedOnce.Do(func() { close(connected) })
-		case pion.PeerConnectionStateFailed, pion.PeerConnectionStateDisconnected:
+		case pion.PeerConnectionStateFailed:
 			if ctx.Err() == nil {
 				opts.OnFailure(errConnectionLost)
 			}
+		}
+		// pion runs each callback on its own goroutine, so they may arrive out
+		// of order: the grace timer follows the current state instead.
+		graceMu.Lock()
+		defer graceMu.Unlock()
+		disconnected := pc.ConnectionState() == pion.PeerConnectionStateDisconnected
+		if !disconnected && grace != nil {
+			grace.Stop()
+			grace = nil
+		}
+		if disconnected && grace == nil {
+			var timer *time.Timer
+			timer = time.AfterFunc(disconnectGrace, func() {
+				graceMu.Lock()
+				// A stopped timer may already be running after a new disconnection.
+				expired := grace == timer && ctx.Err() == nil && pc.ConnectionState() == pion.PeerConnectionStateDisconnected
+				graceMu.Unlock()
+				if expired {
+					opts.Logf("WebRTC still disconnected after %s", disconnectGrace)
+					opts.OnFailure(errConnectionLost)
+				}
+			})
+			grace = timer
 		}
 	})
 	pc.OnDataChannel(func(channel *pion.DataChannel) {
@@ -115,6 +144,11 @@ func NewPeer(opts PeerOptions) (*Peer, error) {
 		cancel()
 		_ = pc.Close()
 		return nil, err
+	}
+	for _, transceiver := range pc.GetTransceivers() {
+		if transceiver.Sender() == sender {
+			p.video = transceiver
+		}
 	}
 	pipeline := NewPipeline(opts.Source, opts.Target, track, opts.Encoder)
 	pipeline.logf = opts.Logf
@@ -148,6 +182,9 @@ func (p *Peer) AcceptOffer(sdp string) (string, error) {
 		return "", errOfferAccepted
 	}
 	if err := p.pc.SetRemoteDescription(pion.SessionDescription{Type: pion.SDPTypeOffer, SDP: sdp}); err != nil {
+		return "", err
+	}
+	if err := setVideoCodec(p.video); err != nil {
 		return "", err
 	}
 	p.offered = true

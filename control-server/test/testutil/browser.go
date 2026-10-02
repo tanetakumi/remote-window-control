@@ -145,6 +145,8 @@ func (b *Browser) readSignaling() {
 			continue
 		}
 		switch m.Type {
+		case "session.config":
+			// The host announces its settings first; none affect this browser.
 		case "webrtc.answer":
 			if b.PC.SetRemoteDescription(pion.SessionDescription{Type: pion.SDPTypeAnswer, SDP: m.SDP}) != nil {
 				return

@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { attachTextInput } from "../src/input/keyboard.js";
 import { createRemoteConnection } from "../src/core/webrtc.js";
@@ -275,8 +275,9 @@ class Peer {
   remoteDescription = null;
   candidates = [];
   constructor() { Peer.current = this; }
-  createDataChannel() { return new Channel(); }
-  addTransceiver() {}
+  transceivers = [];
+  createDataChannel(label) { return Object.assign(new Channel(), { label }); }
+  addTransceiver(kind) { this.transceivers.push(kind); }
   async createOffer() { return { sdp: "offer" }; }
   async setLocalDescription() {}
   async setRemoteDescription(value) { this.remoteDescription = value; }
@@ -294,6 +295,11 @@ class Socket extends EventTarget {
 globalThis.RTCPeerConnection = Peer;
 globalThis.WebSocket = Socket;
 const flush = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+// The host's first message carries its settings; the offer does not wait for it.
+function configure(fields = {}) {
+  emit(Socket.current, "open");
+  emit(Socket.current, "message", { data: JSON.stringify({ type: "session.config", ...fields }) });
+}
 
 test("connection waits for media and decoded video, queues early ICE, and closes on failure", async () => {
   const video = new Element();
@@ -309,7 +315,8 @@ test("connection waits for media and decoded video, queues early ICE, and closes
   });
   assert.equal(Socket.current.url, "ws://host:8443/ws");
   pending.then(() => { resolved = true; });
-  emit(Socket.current, "open");
+  configure();
+  await flush();
   assert.deepEqual(statuses.at(-1), { state: "connecting", message: "Waiting for video…" });
   emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.ice", candidate: { candidate: "early" } }) });
   emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.answer", sdp: "answer" }) });
@@ -362,7 +369,7 @@ test("input is sent only on the control data channel, never on the signaling soc
   const pending = createRemoteConnection({ videoElement: video });
   const socketSent = [];
   Socket.current.send = (data) => socketSent.push(data);
-  emit(Socket.current, "open");
+  configure();
   emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.answer", sdp: "answer" }) });
   await flush();
   Peer.current.ontrack({ streams: [{ getTracks: () => [] }] });
@@ -383,7 +390,7 @@ test("a control channel that never opens fails the connection instead of falling
   const video = new Element();
   const pending = createRemoteConnection({ videoElement: video });
   const rejected = assert.rejects(pending, /Control channel closed/);
-  emit(Socket.current, "open");
+  configure();
   emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.answer", sdp: "answer" }) });
   await flush();
   Peer.current.ontrack({ streams: [{ getTracks: () => [] }] });
@@ -403,7 +410,7 @@ test("initial viewport is resized when control opens before the first video fram
     getInitialViewport: () => ({ width: 390, height: 720, devicePixelRatio: 2, type: "input.text", text: "not sent" }),
   });
   pending.then(() => { resolved = true; });
-  emit(Socket.current, "open");
+  configure();
   Peer.current.connectionState = "connected";
   Peer.current.onconnectionstatechange();
   Channel.current.open();
@@ -425,7 +432,8 @@ test("a playback prompt is a notice and never marks the control connection ready
     onStatus: (state, message) => statuses.push({ state, message }),
     onNotice: (message) => notices.push(message),
   });
-  emit(Socket.current, "open");
+  configure();
+  await flush();
   Peer.current.ontrack({ streams: [{ getTracks: () => [] }] });
   await flush();
   assert.deepEqual(notices, ["Tap the video to start playback."]);
@@ -433,4 +441,39 @@ test("a playback prompt is a notice and never marks the control connection ready
   const rejected = assert.rejects(pending, /cancelled/);
   emit(Socket.current, "message", { data: JSON.stringify({ type: "error", message: "cancelled" }) });
   await rejected;
+});
+
+test("a brief disconnection is waited out on both sides of the grace period", async (t) => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  t.after(() => mock.timers.reset());
+  const video = new Element();
+  const statuses = [];
+  let failure;
+  const pending = createRemoteConnection({
+    videoElement: video,
+    onStatus: (state, message) => statuses.push({ state, message }),
+    onDisconnect: (error) => { failure = error; },
+  });
+  configure();
+  await flush();
+  Peer.current.ontrack({ streams: [{ getTracks: () => [] }] });
+  Peer.current.connectionState = "connected";
+  Peer.current.onconnectionstatechange();
+  emit(video, "loadeddata");
+  Channel.current.open();
+  const remote = await pending;
+
+  const setState = (state) => { Peer.current.connectionState = state; Peer.current.onconnectionstatechange(); };
+  setState("disconnected");
+  assert.deepEqual(statuses.at(-1), { state: "connecting", message: "Reconnecting…" });
+  mock.timers.tick(4000);
+  setState("connected");
+  assert.deepEqual(statuses.at(-1), { state: "connected", message: "Connected" });
+  mock.timers.tick(5000);
+  assert.equal(failure, undefined);
+  assert.equal(remote.sendControl({ type: "input.tap", x: 0.5, y: 0.5 }), true);
+
+  setState("disconnected");
+  mock.timers.tick(5000);
+  assert.match(failure?.message ?? "", /Media connection lost/);
 });

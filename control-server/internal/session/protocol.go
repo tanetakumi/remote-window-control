@@ -6,6 +6,12 @@ import pion "github.com/pion/webrtc/v4"
 // WebRTC signaling and host notices only. Input commands travel on the control
 // data channel.
 const (
+	// typeConfig is the host's first message: whether the browser should
+	// report its receive statistics, and how often.
+	typeConfig = "session.config"
+	// typeClientStats carries the browser's receive statistics for the log.
+	typeClientStats = "client.stats"
+
 	typeOffer  = "webrtc.offer"
 	typeAnswer = "webrtc.answer"
 	typeICE    = "webrtc.ice"
@@ -21,6 +27,10 @@ type message struct {
 	SDP       string                 `json:"sdp,omitempty"`
 	Candidate *pion.ICECandidateInit `json:"candidate,omitempty"`
 	Message   string                 `json:"message,omitempty"`
+	// StatsIntervalMs belongs to typeConfig.
+	StatsIntervalMs int64 `json:"statsIntervalMs,omitempty"`
+	// Report belongs to typeClientStats: numeric counters by name.
+	Report map[string]float64 `json:"report,omitempty"`
 }
 
 func errorMessage(text string) message { return message{Type: typeError, Message: text} }

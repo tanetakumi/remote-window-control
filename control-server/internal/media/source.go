@@ -1,5 +1,5 @@
 // Package media streams the selected window to a browser: it captures frames,
-// encodes them to VP8 with ffmpeg and delivers them over WebRTC, and carries
+// encodes them to VP9 with ffmpeg and delivers them over WebRTC, and carries
 // the browser's control messages back over a data channel.
 //
 // The pipeline depends only on the small interfaces in this file, so it can be

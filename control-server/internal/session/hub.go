@@ -5,8 +5,13 @@ package session
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"maps"
 	"net/http"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -28,7 +33,8 @@ type Options struct {
 	Source  media.Source
 	Target  media.Target
 	Encoder media.EncoderConfig
-	// StatsInterval, when positive, logs streaming statistics at this interval.
+	// StatsInterval, when positive, logs streaming statistics at this
+	// interval and asks the browser to report its own.
 	StatsInterval time.Duration
 }
 
@@ -92,6 +98,8 @@ func (h *Hub) serve(c *conn) {
 	h.opts.Dispatcher.Activate()
 	defer h.opts.Dispatcher.ReleaseAll()
 
+	c.send(message{Type: typeConfig, StatsIntervalMs: h.opts.StatsInterval.Milliseconds()})
+
 	control := func(payload []byte) {
 		if err := h.opts.Dispatcher.Dispatch(payload); err != nil {
 			c.send(message{Type: typeInputError, Message: err.Error()})
@@ -135,6 +143,13 @@ func (h *Hub) serve(c *conn) {
 		switch msg.Type {
 		case typeOffer:
 			c.logf("offer received")
+			// Only codec lines are needed to diagnose browser VP9 support.
+			for _, line := range strings.Split(msg.SDP, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "a=rtpmap:") || strings.HasPrefix(line, "a=fmtp:") {
+					c.logf("offer codec %s", line)
+				}
+			}
 			answer, err := peer.AcceptOffer(msg.SDP)
 			if err != nil {
 				c.logf("offer failed: %v", err)
@@ -143,6 +158,8 @@ func (h *Hub) serve(c *conn) {
 			}
 			c.send(message{Type: typeAnswer, SDP: answer})
 			c.logf("answer sent")
+		case typeClientStats:
+			c.logf("client stats %s", formatReport(msg.Report))
 		case typeICE:
 			if msg.Candidate == nil {
 				continue
@@ -157,4 +174,20 @@ func (h *Hub) serve(c *conn) {
 			return
 		}
 	}
+}
+
+// maxReportFields bounds the counters of one logged client report.
+const maxReportFields = 64
+
+// formatReport renders a client report as sorted key=value pairs.
+func formatReport(report map[string]float64) string {
+	keys := slices.Sorted(maps.Keys(report))
+	if len(keys) > maxReportFields {
+		return fmt.Sprintf("fields=%d (too many to log)", len(keys))
+	}
+	fields := make([]string, len(keys))
+	for i, key := range keys {
+		fields[i] = key + "=" + strconv.FormatFloat(report[key], 'f', -1, 64)
+	}
+	return strings.Join(fields, " ")
 }
