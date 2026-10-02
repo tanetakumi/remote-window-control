@@ -1,16 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { attachKeyboardBridge } from "../src/input/keyboard.js";
+import { attachTextInput } from "../src/input/keyboard.js";
 import { createRemoteConnection } from "../src/core/webrtc.js";
 
 class Element extends EventTarget {
   value = "";
   srcObject = null;
   classList = { toggle() {} };
-  focus() {}
+  style = { setProperty() {} };
+  attributes = {};
+  disabled = false;
+  hidden = false;
+  open = false;
+  focusCount = 0;
+  focus() { this.focusCount++; }
   blur() {}
+  setAttribute(name, value) { this.attributes[name] = value; }
+  showModal() { this.open = true; }
+  close() { this.open = false; emit(this, "close"); }
   setSelectionRange() {}
-  getBoundingClientRect() { return { left: 0, top: 0, width: 100, height: 100 }; }
+  getBoundingClientRect() { return { left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100 }; }
   play() { return Promise.resolve(); }
 }
 function emit(target, type, fields = {}) {
@@ -18,47 +27,236 @@ function emit(target, type, fields = {}) {
   Object.assign(event, fields);
   target.dispatchEvent(event);
 }
-globalThis.window = globalThis;
+globalThis.window = Object.assign(new EventTarget(), {
+  setTimeout: (...args) => setTimeout(...args),
+  clearTimeout: (...args) => clearTimeout(...args),
+  innerWidth: 390, innerHeight: 844,
+});
 window.location = { protocol: "http:", host: "host:8443" };
 
-test("space has one text path; IME only commits once; replacements erase the old suffix", () => {
-  const controls = { buttonElement: new Element(), inputElement: new Element(), backspaceButton: new Element(), enterButton: new Element() };
+function createEditor(draft = { text: "", lastSent: "", error: "" }, sendControl) {
+  const controls = {
+    buttonElement: new Element(), dialogElement: new Element(), inputElement: new Element(),
+    closeButton: new Element(), sendButton: new Element(), restoreButton: new Element(),
+    errorElement: new Element(), draft,
+  };
   const sent = [];
-  const bridge = attachKeyboardBridge(controls, (c) => sent.push(c));
+  const editor = attachTextInput(controls, sendControl ?? ((command) => { sent.push(command); return true; }));
+  return { controls, sent, editor };
+}
+
+function edit(controls, value, fields) {
+  controls.inputElement.value = value;
+  emit(controls.inputElement, "input", fields);
+}
+
+test("typing, IME, replacement, deletion and special keys stay local until Send", () => {
+  const { controls, sent, editor } = createEditor();
   emit(controls.buttonElement, "click");
-  emit(controls.inputElement, "keydown", { key: " " });
-  controls.inputElement.value = " ";
-  emit(controls.inputElement, "input");
-  emit(controls.inputElement, "keyup", { key: " " });
-  assert.deepEqual(sent, [{ type: "input.text", text: " " }]);
+  assert.equal(controls.dialogElement.open, true);
+  assert.equal(controls.inputElement.focusCount, 1);
+  assert.equal(controls.buttonElement.attributes["aria-expanded"], "true");
+  assert.equal(controls.sendButton.disabled, true);
+  edit(controls, " ");
   emit(controls.inputElement, "compositionstart");
-  controls.inputElement.value = " に";
-  emit(controls.inputElement, "input", { isComposing: true });
+  edit(controls, " に", { isComposing: true });
   emit(controls.inputElement, "keydown", { key: "Enter", isComposing: true });
-  assert.equal(sent.length, 1);
-  controls.inputElement.value = " 日本";
+  emit(controls.sendButton, "click");
+  assert.equal(controls.sendButton.disabled, true);
+  edit(controls, " 日本");
   emit(controls.inputElement, "compositionend");
-  emit(controls.inputElement, "input");
-  assert.deepEqual(sent[1], { type: "input.text", text: "日本" });
-  controls.inputElement.value = " 日々";
-  emit(controls.inputElement, "input", { inputType: "insertReplacementText" });
-  assert.deepEqual(sent.slice(2), [{ type: "input.keyDown", key: "Backspace" }, { type: "input.keyUp", key: "Backspace" }, { type: "input.text", text: "々" }]);
-  bridge.cleanup();
-  emit(controls.enterButton, "click");
-  assert.equal(sent.length, 5);
+  edit(controls, " 日々", { inputType: "insertReplacementText" });
+  for (const key of ["Enter", "Backspace", "Tab", "ArrowLeft", "Delete"]) {
+    emit(controls.inputElement, "keydown", { key });
+  }
+  edit(controls, " 日", { inputType: "deleteContentBackward" });
+  assert.deepEqual(sent, []);
+  emit(controls.sendButton, "click");
+  emit(controls.sendButton, "click");
+  assert.deepEqual(sent, [{ type: "input.text", text: " 日" }]);
+  assert.equal(controls.inputElement.value, "");
+  assert.equal(controls.draft.text, "");
+  assert.equal(controls.dialogElement.open, false);
+  assert.equal(controls.buttonElement.attributes["aria-expanded"], "false");
+  editor.cleanup();
 });
 
-test("large pasted text is sent in bounded Unicode-safe commands", () => {
-  const controls = { buttonElement: new Element(), inputElement: new Element() };
-  const sent = [];
-  const bridge = attachKeyboardBridge(controls, (c) => sent.push(c));
-  emit(controls.inputElement, "focus");
-  controls.inputElement.value = "😀".repeat(2500);
-  emit(controls.inputElement, "input", { inputType: "insertFromPaste" });
+test("empty drafts cannot send, but whitespace is preserved", () => {
+  const { controls, sent, editor } = createEditor();
+  emit(controls.sendButton, "click");
+  emit(controls.buttonElement, "click");
+  emit(controls.sendButton, "click");
+  assert.deepEqual(sent, []);
+  edit(controls, "  ");
+  emit(controls.sendButton, "click");
+  assert.deepEqual(sent, [{ type: "input.text", text: "  " }]);
+  editor.cleanup();
+});
+
+test("large pasted text is sent on demand in bounded Unicode-safe commands", () => {
+  const { controls, sent, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  const text = "😀".repeat(2500);
+  edit(controls, text, { inputType: "insertFromPaste" });
+  assert.deepEqual(sent, []);
+  emit(controls.sendButton, "click");
   assert.equal(sent.length, 3);
-  assert.equal(sent.map((c) => c.text).join(""), controls.inputElement.value);
+  assert.equal(sent.map((c) => c.text).join(""), text);
   sent.forEach((c) => assert.ok(Buffer.byteLength(c.text) <= 4096));
-  bridge.cleanup();
+  editor.cleanup();
+});
+
+test("newlines are ordered between text chunks without appending an extra Enter", () => {
+  const { controls, sent, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  edit(controls, "日本\n\nworld");
+  emit(controls.sendButton, "click");
+  assert.deepEqual(sent, [
+    { type: "input.text", text: "日本" },
+    { type: "input.keyDown", key: "Enter" }, { type: "input.keyUp", key: "Enter" },
+    { type: "input.keyDown", key: "Enter" }, { type: "input.keyUp", key: "Enter" },
+    { type: "input.text", text: "world" },
+  ]);
+  editor.cleanup();
+});
+
+test("closing and reconnecting preserve the draft and cleanup removes old listeners", () => {
+  const { controls, sent, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  edit(controls, "unfinished draft");
+  emit(controls.closeButton, "click");
+  assert.equal(editor.isActive(), false);
+  emit(controls.buttonElement, "click");
+  assert.equal(controls.inputElement.value, "unfinished draft");
+  editor.cleanup();
+  assert.equal(controls.dialogElement.open, false);
+  assert.equal(controls.buttonElement.disabled, true);
+  emit(controls.buttonElement, "click");
+  emit(controls.sendButton, "click");
+  assert.deepEqual(sent, []);
+  const reconnected = createEditor(controls.draft);
+  emit(reconnected.controls.buttonElement, "click");
+  assert.equal(reconnected.controls.inputElement.value, "unfinished draft");
+  reconnected.editor.cleanup();
+});
+
+test("close touch keeps input focused until click; cancellation retains the draft", () => {
+  const { controls, sent, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  edit(controls, "unfinished draft");
+  const touchDown = () => {
+    const event = new Event("pointerdown", { cancelable: true });
+    Object.assign(event, { pointerType: "touch", isPrimary: true, button: 0 });
+    controls.closeButton.dispatchEvent(event);
+    return event;
+  };
+  assert.equal(touchDown().defaultPrevented, true, "suppress focus transfer that dismisses the keyboard");
+  assert.equal(editor.isActive(), true, "pressing down does not close the editor");
+  emit(controls.closeButton, "pointercancel");
+  assert.equal(editor.isActive(), true);
+  assert.equal(controls.draft.text, "unfinished draft");
+  assert.equal(touchDown().defaultPrevented, true);
+  emit(controls.closeButton, "pointerup");
+  emit(controls.closeButton, "click");
+  assert.equal(editor.isActive(), false);
+  assert.equal(controls.draft.text, "unfinished draft");
+  assert.deepEqual(sent, []);
+  editor.cleanup();
+  assert.equal(touchDown().defaultPrevented, false, "cleanup removes the touch handler");
+});
+
+test("close focus guard leaves mouse and secondary touches unchanged", () => {
+  const { controls, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  for (const fields of [
+    { pointerType: "mouse", isPrimary: true, button: 0 },
+    { pointerType: "touch", isPrimary: false, button: 0 },
+    { pointerType: "touch", isPrimary: true, button: 2 },
+  ]) {
+    const event = new Event("pointerdown", { cancelable: true });
+    Object.assign(event, fields);
+    controls.closeButton.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, false);
+  }
+  emit(controls.closeButton, "click", { detail: 0 });
+  assert.equal(editor.isActive(), false, "keyboard activation still closes via click");
+  editor.cleanup();
+});
+
+test("Escape during composition is ignored; backdrop dismisses only an outside press and click", () => {
+  const { controls, sent, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  emit(controls.inputElement, "compositionstart");
+  const cancel = new Event("cancel", { cancelable: true });
+  controls.dialogElement.dispatchEvent(cancel);
+  assert.equal(cancel.defaultPrevented, true);
+  emit(controls.inputElement, "compositionend");
+  const escape = new Event("cancel", { cancelable: true });
+  controls.dialogElement.dispatchEvent(escape);
+  assert.equal(escape.defaultPrevented, false);
+  emit(controls.dialogElement, "pointerdown", { clientX: 50, clientY: 50 });
+  emit(controls.dialogElement, "click", { clientX: 150, clientY: 150 });
+  assert.equal(editor.isActive(), true, "dragging out of the panel does not dismiss it");
+  emit(controls.dialogElement, "pointerdown", { clientX: 150, clientY: 150 });
+  emit(controls.dialogElement, "click", { clientX: 150, clientY: 150 });
+  assert.equal(editor.isActive(), false);
+  assert.deepEqual(sent, []);
+  editor.cleanup();
+});
+
+test("a failed chunk stops sending, retains text and does not retry automatically", () => {
+  const commands = [];
+  const { controls, editor } = createEditor(undefined, (command) => {
+    commands.push(command);
+    return commands.length < 2;
+  });
+  emit(controls.buttonElement, "click");
+  const text = "😀".repeat(2500);
+  edit(controls, text);
+  emit(controls.sendButton, "click");
+  assert.equal(commands.length, 2);
+  assert.equal(controls.draft.text, text);
+  assert.equal(controls.inputElement.value, text);
+  assert.equal(controls.errorElement.hidden, false);
+  assert.match(controls.errorElement.textContent, /partially sent/);
+  assert.equal(editor.isActive(), true);
+  editor.cleanup();
+});
+
+test("synchronous disconnect during sending keeps the draft and stops remaining commands", () => {
+  const commands = [];
+  let disconnect;
+  const { controls, editor } = createEditor(undefined, (command) => {
+    commands.push(command);
+    disconnect();
+    return false;
+  });
+  disconnect = () => editor.cleanup();
+  emit(controls.buttonElement, "click");
+  edit(controls, "😀".repeat(2500));
+  emit(controls.sendButton, "click");
+  assert.equal(commands.length, 1);
+  assert.equal(controls.draft.text, "😀".repeat(2500));
+  assert.equal(editor.isActive(), false);
+  assert.equal(controls.buttonElement.disabled, true);
+  assert.match(controls.draft.error, /partially sent/);
+});
+
+test("a later host error offers the last text without replacing a new draft", () => {
+  const { controls, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  edit(controls, "submitted");
+  emit(controls.sendButton, "click");
+  editor.reportError("Host input timed out");
+  emit(controls.buttonElement, "click");
+  assert.equal(controls.restoreButton.hidden, false);
+  emit(controls.restoreButton, "click");
+  assert.equal(controls.inputElement.value, "submitted");
+  edit(controls, "new draft");
+  editor.reportError("Another host error");
+  assert.equal(controls.restoreButton.hidden, true);
+  assert.equal(controls.inputElement.value, "new draft");
+  editor.cleanup();
 });
 
 class Channel extends EventTarget {
@@ -102,10 +300,17 @@ test("connection waits for media and decoded video, queues early ICE, and closes
   let resolved = false;
   let stopped = false;
   let failure;
-  const pending = createRemoteConnection({ videoElement: video, onDisconnect: (error) => { failure = error; } });
+  const statuses = [], inputErrors = [];
+  const pending = createRemoteConnection({
+    videoElement: video,
+    onDisconnect: (error) => { failure = error; },
+    onStatus: (state, message) => statuses.push({ state, message }),
+    onInputError: (message) => inputErrors.push(message),
+  });
   assert.equal(Socket.current.url, "ws://host:8443/ws");
   pending.then(() => { resolved = true; });
   emit(Socket.current, "open");
+  assert.deepEqual(statuses.at(-1), { state: "connecting", message: "Waiting for video…" });
   emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.ice", candidate: { candidate: "early" } }) });
   emit(Socket.current, "message", { data: JSON.stringify({ type: "webrtc.answer", sdp: "answer" }) });
   await flush();
@@ -122,9 +327,15 @@ test("connection waits for media and decoded video, queues early ICE, and closes
   Channel.current.open();
   const remote = await pending;
   assert.equal(resolved, true);
+  assert.deepEqual(statuses.at(-1), { state: "connected", message: "Connected" });
+  emit(Socket.current, "message", { data: JSON.stringify({ type: "input.error", message: "text input timed out" }) });
+  await flush();
+  assert.deepEqual(inputErrors, ["text input timed out"]);
+  assert.deepEqual(statuses.at(-1), { state: "connected", message: "Connected" });
   emit(Socket.current, "message", { data: JSON.stringify({ type: "error", message: "host failure" }) });
   await flush();
   assert.equal(failure.message, "host failure");
+  assert.deepEqual(statuses.at(-1), { state: "error", message: "Connection lost" });
   assert.equal(stopped, true);
   assert.equal(video.srcObject, null);
   assert.equal(remote.sendControl({ type: "input.tap" }), false);
@@ -203,4 +414,23 @@ test("initial viewport is resized when control opens before the first video fram
   emit(video, "loadeddata");
   const remote = await pending;
   remote.close();
+});
+
+test("a playback prompt is a notice and never marks the control connection ready", async () => {
+  const video = new Element();
+  video.play = () => Promise.reject(new Error("Autoplay blocked"));
+  const statuses = [], notices = [];
+  const pending = createRemoteConnection({
+    videoElement: video,
+    onStatus: (state, message) => statuses.push({ state, message }),
+    onNotice: (message) => notices.push(message),
+  });
+  emit(Socket.current, "open");
+  Peer.current.ontrack({ streams: [{ getTracks: () => [] }] });
+  await flush();
+  assert.deepEqual(notices, ["Tap the video to start playback."]);
+  assert.deepEqual(statuses.at(-1), { state: "connecting", message: "Waiting for video…" });
+  const rejected = assert.rejects(pending, /cancelled/);
+  emit(Socket.current, "message", { data: JSON.stringify({ type: "error", message: "cancelled" }) });
+  await rejected;
 });

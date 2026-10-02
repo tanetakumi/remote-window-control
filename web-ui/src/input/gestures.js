@@ -242,6 +242,7 @@ export function attachGestureControls(videoElement, sendControl, options = {}) {
   });
   listen(view, "blur", cancel);
   listen(view, "pagehide", cancel);
+  listen(doc, "focusin", (event) => { if (event.target !== videoElement) cancel(); });
   listen(doc, "visibilitychange", () => { if (doc.hidden) cancel(); });
   listen(videoElement, "contextmenu", (event) => event.preventDefault());
   listen(videoElement, "dragstart", (event) => event.preventDefault());

@@ -39,18 +39,40 @@
       <!-- Remote Control Screen -->
       <div id="remote-screen" hidden>
         <header id="top-bar">
+          <button id="windows-button" type="button" aria-label="Back to applications" title="Back to applications">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7M5 12h14"/></svg>
+          </button>
           <div class="status-group">
-            <div id="status-pill" role="status" aria-live="polite">Connecting…</div>
+            <div id="status-pill" data-state="connecting" role="status" aria-live="polite" aria-atomic="true" title="Connecting…">
+              <svg class="status-connecting" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-8-8"/></svg>
+              <svg class="status-connected" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+              <svg class="status-error" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+              <span id="status-message" class="sr-only">Connecting…</span>
+            </div>
             <div id="bitrate-pill" hidden aria-label="Video bitrate"></div>
           </div>
           <div id="top-bar-actions">
-            <button id="windows-button" type="button" aria-label="Switch window" title="Switch window">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z"/></svg>
-            </button>
-            <button id="touch-mode" type="button" aria-label="Input mode: Pointer. Switch to Tap." title="Switch to Tap mode" disabled>Pointer</button>
-            <button id="keyboard-button" type="button" aria-label="Toggle keyboard" title="Keyboard">
+            <div id="touch-mode" role="group" aria-label="Input mode">
+              <button type="button" data-mode="direct" aria-label="Tap mode: touch the screen directly" aria-pressed="false" title="Tap: touch the screen directly" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 12V5a2 2 0 0 1 4 0v7M13 9h2a2 2 0 0 1 2 2h1a2 2 0 0 1 2 2v3a6 6 0 0 1-6 6h-1a6 6 0 0 1-4.8-2.4l-4-5.3a2 2 0 0 1 3-2.6L9 14M5 3 4 2M17 3l1-1M3 7H2M20 7h-1"/>
+                </svg>
+                <span class="mode-label">Tap</span>
+              </button>
+              <button type="button" data-mode="relative" aria-label="Pointer mode: slide to move the cursor" aria-pressed="true" title="Pointer: slide to move the cursor" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 3 7.5 18 2.5-7 7-2.5L4 3zM14 14l6 6"/></svg>
+                <span class="mode-label">Pointer</span>
+              </button>
+            </div>
+            <button id="keyboard-button" type="button" aria-label="Open text input" aria-haspopup="dialog" aria-controls="text-dialog" aria-expanded="false" title="Text input" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 14.5zM7 9H6m4 0H9m4 0h-1m4 0h-1m-8 3H6m4 0H9m4 0h-1m4 0h-1m-8 3h10"/>
+              </svg>
+            </button>
+            <button id="special-keys-button" type="button" aria-label="Special keys" aria-controls="special-keys-palette" aria-expanded="false" aria-pressed="false" title="Special keys" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
               </svg>
             </button>
           </div>
@@ -73,32 +95,49 @@
               <path d="M1 1v23l6-6 5 10 4-2-5-10h10z"/>
             </svg>
           </div>
+          <div id="special-keys-palette" role="group" aria-label="Special keys" hidden>
+            <button id="move-special-keys-palette" type="button" aria-label="Move special keys palette: drag or use arrow keys" title="Drag to move, or use arrow keys" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="8" cy="5" r="1.5"/><circle cx="16" cy="5" r="1.5"/>
+                <circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/>
+                <circle cx="8" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/>
+              </svg>
+            </button>
+            <button id="send-backspace" type="button" aria-label="Send Backspace to remote window" disabled>Backspace</button>
+          </div>
+          <div id="remote-notice" role="status" hidden>
+            <span id="remote-notice-message"></span>
+            <button id="dismiss-notice" class="dismiss-button" type="button" aria-label="Dismiss message">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+            </button>
+          </div>
         </div>
 
-        <div id="input-dock">
-          <div class="input-wrapper">
-            <textarea
-              id="hidden-text-input"
-              inputmode="text"
-              enterkeyhint="done"
-              autocomplete="off"
-              autocapitalize="off"
-              autocorrect="off"
-              spellcheck="false"
-              placeholder="Type into remote window…"
-            ></textarea>
+        <dialog id="text-dialog" aria-labelledby="text-dialog-title">
+          <div class="text-dialog-header">
+            <label id="text-dialog-title" for="remote-text-input">Text input</label>
+            <button id="close-text-input" class="dismiss-button" type="button" aria-label="Close text input">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+            </button>
           </div>
-          <button id="backspace-button" type="button" aria-label="Backspace" title="Backspace">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M10 6h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-9L3 12zm4 3-4 6m0-6 4 6"/>
-            </svg>
-          </button>
-          <button id="enter-button" type="button" aria-label="Enter" title="Enter">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7v6a3 3 0 0 0 3 3h13m0 0-4-4m4 4-4 4"/>
-            </svg>
-          </button>
-        </div>
+          <textarea
+            id="remote-text-input"
+            rows="4"
+            inputmode="text"
+            enterkeyhint="enter"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="Type here, then send…"
+            aria-describedby="text-input-error"
+          ></textarea>
+          <p id="text-input-error" role="status" hidden></p>
+          <div class="text-dialog-actions">
+            <button id="restore-text-input" type="button" hidden>Restore last text</button>
+            <button id="send-text-input" type="button" disabled>Send</button>
+          </div>
+        </dialog>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

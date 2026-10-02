@@ -206,7 +206,7 @@ test("a failed drag-release send stops cursor updates after synchronous cleanup"
   assert.equal(sent.length, 3);
 });
 
-for (const reason of ["touchcancel", "blur", "visibility", "pagehide", "mode", "cleanup"]) {
+for (const reason of ["touchcancel", "blur", "focusin", "visibility", "pagehide", "mode", "cleanup"]) {
   test(`${reason} releases a drag once and ignores the old contact sequence`, (t) => {
     const { video, view, doc, sent, controls } = setup(t);
     tap(video);
@@ -216,6 +216,7 @@ for (const reason of ["touchcancel", "blur", "visibility", "pagehide", "mode", "
     else if (reason === "mode") controls.setMode("direct");
     else if (reason === "cleanup") controls.cleanup();
     else if (reason === "visibility") { doc.hidden = true; emit(doc, "visibilitychange"); }
+    else if (reason === "focusin") emit(doc, "focusin");
     else emit(view, reason);
     assert.equal(sent.at(-1).type, "input.mouseUp");
     const count = sent.length;
@@ -288,46 +289,66 @@ function setupUI(t, saved, failStorage = false) {
     videoElement: video, stageElement: new Element(), cursorElement: new Element(),
     modeElement: new Element(),
   };
+  const tapButton = new Element();
+  tapButton.dataset = { mode: "direct" };
+  const pointerButton = new Element();
+  pointerButton.dataset = { mode: "relative" };
+  elements.modeElement.querySelectorAll = () => [tapButton, pointerButton];
   const cleanup = attachTouchControlsUI(elements, (c) => sent.push(c));
   t.after(cleanup);
-  return { ...elements, view, store, sent, cleanup };
+  return { ...elements, tapButton, pointerButton, view, store, sent, cleanup };
 }
 
-test("the mode button restores and toggles modes, saves the preference, and changes cursor visibility", (t) => {
+test("mode segments restore and select modes, save the preference, and change cursor visibility", (t) => {
   const ui = setupUI(t, "direct");
-  assert.equal(ui.modeElement.textContent, "Tap");
-  assert.equal(ui.modeElement.getAttribute("aria-label"), "Input mode: Tap. Switch to Pointer.");
-  assert.equal(ui.modeElement.disabled, false);
+  assert.equal(ui.tapButton.getAttribute("aria-pressed"), "true");
+  assert.equal(ui.pointerButton.getAttribute("aria-pressed"), "false");
+  assert.equal(ui.tapButton.disabled, false);
+  assert.equal(ui.pointerButton.disabled, false);
   assert.equal(ui.cursorElement.hidden, true);
   tap(ui.videoElement);
-  emit(ui.modeElement, "click");
+  emit(ui.pointerButton, "click");
   assert.equal(ui.store.get("share-app.touch-mode"), "relative");
   assert.equal(ui.cursorElement.hidden, false);
-  assert.equal(ui.modeElement.textContent, "Pointer");
-  assert.equal(ui.modeElement.getAttribute("aria-label"), "Input mode: Pointer. Switch to Tap.");
+  assert.equal(ui.pointerButton.getAttribute("aria-pressed"), "true");
+  assert.equal(ui.tapButton.getAttribute("aria-pressed"), "false");
   tap(ui.videoElement, finger(90, 90));
   assert.deepEqual(ui.sent[1], ui.sent[0]);
-  emit(ui.modeElement, "click");
+  emit(ui.tapButton, "click");
   assert.equal(ui.store.get("share-app.touch-mode"), "direct");
   assert.equal(ui.cursorElement.hidden, true);
   tap(ui.videoElement, finger(90, 90));
   assert.deepEqual(ui.sent[2], { type: "input.tap", button: "left", x: 0.9, y: 0.9 });
   ui.cleanup();
   assert.equal(ui.cursorElement.hidden, true);
-  assert.equal(ui.modeElement.disabled, true);
-  emit(ui.modeElement, "click");
+  assert.equal(ui.tapButton.disabled, true);
+  assert.equal(ui.pointerButton.disabled, true);
+  emit(ui.pointerButton, "click");
   assert.equal(ui.store.get("share-app.touch-mode"), "direct");
 });
 
 for (const failStorage of [false, true]) {
   test(`invalid or unavailable storage defaults to relative pointer (storage blocked: ${failStorage})`, (t) => {
     const ui = setupUI(t, "mouse", failStorage);
-    assert.equal(ui.modeElement.textContent, "Pointer");
-    emit(ui.modeElement, "click");
+    assert.equal(ui.pointerButton.getAttribute("aria-pressed"), "true");
+    emit(ui.tapButton, "click");
     tap(ui.videoElement);
     assert.deepEqual(ui.sent, [{ type: "input.tap", button: "left", x: 0.25, y: 0.75 }]);
   });
 }
+
+test("selecting the active mode keeps an ongoing pointer drag alive", (t) => {
+  const ui = setupUI(t);
+  tap(ui.videoElement);
+  t.mock.timers.tick(50);
+  touch(ui.videoElement, "touchstart", [finger(25, 75)]);
+  touch(ui.videoElement, "touchmove", [finger(45, 75)]);
+  assert.equal(ui.sent.at(-1).type, "input.mouseMove");
+  emit(ui.pointerButton, "click");
+  assert.equal(ui.sent.some((command) => command.type === "input.mouseUp"), false);
+  touch(ui.videoElement, "touchend", [], [finger(45, 75)]);
+  assert.equal(ui.sent.at(-1).type, "input.mouseUp");
+});
 
 test("cursor rendering follows letterboxing and video resize while preserving logical position", (t) => {
   const ui = setupUI(t);

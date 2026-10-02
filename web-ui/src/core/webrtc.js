@@ -3,7 +3,7 @@ function makeSignalingUrl() {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDisconnect, signal, getInitialViewport }) {
+export function createRemoteConnection({ videoElement, onStatus, onNotice, onInputError, onBitrate, onDisconnect, signal, getInitialViewport }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error("Connection cancelled.")); return; }
     const peer = new RTCPeerConnection();
@@ -19,9 +19,9 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
     let lastTime;
     let messageChain = Promise.resolve();
 
-    const status = (message) => onStatus?.(message);
+    const status = (state, message) => onStatus?.(state, message);
     const timeout = window.setTimeout(() => fail(new Error("Connection timed out. Check host and media connectivity.")), 15000);
-    const waitingTimer = window.setTimeout(() => { if (!closed && !hasTrack) status("Waiting for host video…"); }, 3000);
+    const waitingTimer = window.setTimeout(() => { if (!closed && !hasTrack) status("connecting", "Waiting for video…"); }, 3000);
 
     function close() {
       if (closed) return;
@@ -44,7 +44,7 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
 
     function fail(error) {
       if (closed) return;
-      status(error.message);
+      status("error", "Connection lost");
       // Reject with the actual failure before close's fallback rejection.
       if (!ready) reject(error);
       close();
@@ -90,7 +90,7 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
       ready = true;
       window.clearTimeout(timeout);
       window.clearTimeout(waitingTimer);
-      status("Control ready");
+      status("connected", "Connected");
       if (onBitrate) pollBitrate();
       resolve(remote);
     }
@@ -116,7 +116,7 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
       if (closed) return;
       videoElement.srcObject = event.streams[0] ?? new MediaStream([event.track]);
       hasTrack = true;
-      videoElement.play()?.catch(() => status("Tap the video to start playback."));
+      videoElement.play()?.catch(() => { if (!closed) onNotice?.("Tap the video to start playback."); });
       checkReady();
     };
     peer.onconnectionstatechange = () => {
@@ -131,7 +131,7 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
     };
     signaling.addEventListener("open", () => {
       (async () => {
-        status("Signaling connected; waiting for video…");
+        status("connecting", "Waiting for video…");
         const offer = await peer.createOffer();
         if (closed) return;
         await peer.setLocalDescription(offer);
@@ -143,7 +143,7 @@ export function createRemoteConnection({ videoElement, onStatus, onBitrate, onDi
         if (closed) return;
         const message = JSON.parse(event.data);
         if (message.type === "error") throw new Error(message.message || "Host connection failed.");
-        if (message.type === "input.error") { status(message.message); return; }
+        if (message.type === "input.error") { onInputError?.(message.message || "The host could not apply the input."); return; }
         if (message.type === "webrtc.answer") {
           await peer.setRemoteDescription({ type: "answer", sdp: message.sdp });
           for (const candidate of pendingICE.splice(0)) await peer.addIceCandidate(candidate);

@@ -3,7 +3,8 @@ import "./styles.css";
 import { fetchWindows, setTargetWindow } from "./core/api.js";
 import { createRemoteConnection } from "./core/webrtc.js";
 import { attachTouchControlsUI } from "./input/touch-ui.js";
-import { attachKeyboardBridge } from "./input/keyboard.js";
+import { attachTextInput } from "./input/keyboard.js";
+import { attachSpecialKeysPalette } from "./input/special-keys-palette.js";
 import { attachViewportSync, getViewportPayload } from "./input/viewport.js";
 
 const selectScreen = document.querySelector("#select-screen");
@@ -16,16 +17,21 @@ const videoStageElement = document.querySelector("#video-stage");
 const touchCursorElement = document.querySelector("#touch-cursor");
 const touchModeElement = document.querySelector("#touch-mode");
 const statusElement = document.querySelector("#status-pill");
+const statusMessageElement = document.querySelector("#status-message");
 const bitrateElement = document.querySelector("#bitrate-pill");
 const keyboardButton = document.querySelector("#keyboard-button");
-const hiddenInput = document.querySelector("#hidden-text-input");
-const backspaceButton = document.querySelector("#backspace-button");
-const enterButton = document.querySelector("#enter-button");
+const specialKeysButton = document.querySelector("#special-keys-button");
+const textDialog = document.querySelector("#text-dialog");
+const textInput = document.querySelector("#remote-text-input");
+const noticeElement = document.querySelector("#remote-notice");
+const noticeMessage = document.querySelector("#remote-notice-message");
 const refreshButton = document.querySelector("#refresh-button");
 
 let connecting = false;
 let cleanupRemote = () => {};
 let connectionAbort;
+// Keep only the current target's draft in memory, including across reconnects.
+let textDraft = { target: null, text: "", lastSent: "", error: "" };
 
 function getAppIconSvg() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"></rect><line x1="8" x2="16" y1="21" y2="21"></line><line x1="12" x2="12" y1="17" y2="21"></line></svg>`;
@@ -116,21 +122,15 @@ function setWindowListEnabled(enabled) {
   }
 }
 
-function setStatus(message) {
-  statusElement.textContent = message;
-  const lower = message.toLowerCase();
-  if (lower.includes("ready") || lower.includes("connected") || lower.includes("active")) {
-    statusElement.dataset.state = "connected";
-  } else if (
-    lower.includes("fail") ||
-    lower.includes("error") ||
-    lower.includes("close") ||
-    lower.includes("disconnected")
-  ) {
-    statusElement.dataset.state = "error";
-  } else {
-    statusElement.dataset.state = "connecting";
-  }
+function setStatus(state, message) {
+  statusMessageElement.textContent = message;
+  statusElement.title = message;
+  statusElement.dataset.state = state;
+}
+
+function showNotice(message) {
+  noticeMessage.textContent = message;
+  noticeElement.hidden = false;
 }
 
 function setSelectStatus(message, isError = false) {
@@ -164,6 +164,9 @@ async function connectToWindow(target) {
   setSelectStatus(`Connecting to ${target.title || "window"}…`);
   try {
     await setTargetWindow(target.handle);
+    if (textDraft.target !== target.handle) {
+      textDraft = { target: target.handle, text: "", lastSent: "", error: "" };
+    }
     selectScreen.hidden = true;
     remoteScreen.hidden = false;
     await startRemoteControl();
@@ -180,15 +183,27 @@ async function startRemoteControl() {
   connectionAbort?.abort();
   connectionAbort = new AbortController();
   waitingElement.hidden = false;
-  setStatus("Connecting…");
+  noticeElement.hidden = true;
+  keyboardButton.disabled = true;
+  specialKeysButton.disabled = true;
+  setStatus("connecting", "Connecting…");
+  let keyboard;
+  let viewport;
   const remote = await createRemoteConnection({
     getInitialViewport: () => getViewportPayload(videoStageElement),
     signal: connectionAbort.signal,
     videoElement,
     onStatus: setStatus,
+    onNotice: showNotice,
+    onInputError: (message) => {
+      showNotice(message);
+      keyboard?.reportError(message);
+    },
     onDisconnect: (error) => returnToWindows(error.message, true),
     onBitrate: (kbps) => {
       bitrateElement.textContent = `${kbps} kbps`;
+      bitrateElement.title = `${kbps} kbps`;
+      bitrateElement.setAttribute("aria-label", `Video bitrate: ${kbps} kbps`);
       bitrateElement.hidden = false;
     },
   });
@@ -199,29 +214,43 @@ async function startRemoteControl() {
     cursorElement: touchCursorElement,
     modeElement: touchModeElement,
   }, remote.sendControl);
-  const keyboard = attachKeyboardBridge(
+  const specialKeys = attachSpecialKeysPalette({
+    buttonElement: specialKeysButton,
+    paletteElement: document.querySelector("#special-keys-palette"),
+    stageElement: videoStageElement,
+    moveHandle: document.querySelector("#move-special-keys-palette"),
+    keyButton: document.querySelector("#send-backspace"),
+  }, remote.sendControl);
+  keyboard = attachTextInput(
     {
       buttonElement: keyboardButton,
-      inputElement: hiddenInput,
-      backspaceButton,
-      enterButton,
+      dialogElement: textDialog,
+      inputElement: textInput,
+      closeButton: document.querySelector("#close-text-input"),
+      sendButton: document.querySelector("#send-text-input"),
+      restoreButton: document.querySelector("#restore-text-input"),
+      errorElement: document.querySelector("#text-input-error"),
+      draft: textDraft,
+      onOpenChange: (active) => {
+        specialKeys.setTextInputActive(active);
+        viewport?.refresh();
+      },
     },
-    remote.sendControl,
-    setStatus
+    remote.sendControl
   );
-  const viewport = attachViewportSync(remote.sendControl, {
+  viewport = attachViewportSync(remote.sendControl, {
     isSuspended: () => keyboard.isActive(),
     targetElement: videoStageElement,
   });
   cleanupRemote = () => {
     releaseTouch();
+    specialKeys.cleanup();
     keyboard.cleanup();
     viewport.cleanup();
     remote.close();
     bitrateElement.hidden = true;
     cleanupRemote = () => {};
   };
-  setStatus("Control ready");
 }
 
 function returnToWindows(message = "", isError = false) {
@@ -234,8 +263,12 @@ function returnToWindows(message = "", isError = false) {
 }
 
 videoElement.addEventListener("click", () =>
-  videoElement.play()?.catch(() => setStatus("Playback could not start."))
+  videoElement.play()?.catch(() => showNotice("Playback could not start. Tap the video to retry."))
 );
+
+document.querySelector("#dismiss-notice").addEventListener("click", () => {
+  noticeElement.hidden = true;
+});
 
 document.querySelector("#windows-button").addEventListener("click", () => {
   returnToWindows();

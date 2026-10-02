@@ -1,102 +1,157 @@
 import { createListenerTracker } from "../lib/events.js";
 
-const SPECIAL_KEYS = new Set(["Enter", "Tab", "Escape", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
-
-export function attachKeyboardBridge({ buttonElement, inputElement, backspaceButton, enterButton }, sendControl, onStatus) {
-  let keyboardActive = false;
-  let composing = false;
-  let previousValue = "";
-  let disposed = false;
-  let focusTimer;
-  const { listen, cleanup: removeListeners } = createListenerTracker();
-  const sendKey = (key) => {
-    sendControl({ type: "input.keyDown", key });
-    sendControl({ type: "input.keyUp", key });
-  };
-  const sendText = (text) => {
-    const lines = text.split("\n");
-    lines.forEach((line, index) => {
-      if (index) sendKey("Enter");
-      const chars = Array.from(line);
-      for (let offset = 0; offset < chars.length; offset += 1024) {
-        sendControl({ type: "input.text", text: chars.slice(offset, offset + 1024).join("") });
-      }
-    });
-  };
-  const syncUi = () => {
-    buttonElement.classList.toggle("active", keyboardActive);
-    inputElement.classList.toggle("active", keyboardActive);
-  };
-  const focus = () => {
-    if (disposed || !keyboardActive) return;
-    inputElement.focus();
-    inputElement.setSelectionRange(inputElement.value.length, inputElement.value.length);
-  };
-  const commit = () => {
-    if (!keyboardActive || composing) return;
-    // Keep only a committed tail. Replacements are applied from the first changed character.
-    const before = Array.from(previousValue);
-    const after = Array.from(inputElement.value);
-    let common = 0;
-    while (common < before.length && common < after.length && before[common] === after[common]) common++;
-    for (let index = common; index < before.length; index++) sendKey("Backspace");
-    sendText(after.slice(common).join(""));
-    previousValue = inputElement.value;
-  };
-  listen(buttonElement, "click", () => {
-    keyboardActive = !keyboardActive;
-    composing = false;
-    previousValue = inputElement.value = "";
-    syncUi();
-    if (keyboardActive) focus(); // iOS focus must stay within the user gesture.
-    else inputElement.blur();
-    onStatus?.(keyboardActive ? "Keyboard active" : "Keyboard hidden");
-  });
-  for (const [element, key] of [[backspaceButton, "Backspace"], [enterButton, "Enter"]]) {
-    if (!element) continue;
-    listen(element, "pointerdown", (event) => event.preventDefault());
-    listen(element, "click", (event) => {
-      event.preventDefault();
-      if (composing) return;
-      sendKey(key);
-      inputElement.value = key === "Enter" ? "" : Array.from(inputElement.value).slice(0, -1).join("");
-      previousValue = inputElement.value;
-      focus();
-    });
+// 1024 Unicode code points fit the host's 4096-byte text limit, including emoji.
+function* textCommands(text) {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  for (const [index, line] of lines.entries()) {
+    if (index) {
+      yield { type: "input.keyDown", key: "Enter" };
+      yield { type: "input.keyUp", key: "Enter" };
+    }
+    const chars = Array.from(line);
+    for (let offset = 0; offset < chars.length; offset += 1024) {
+      yield { type: "input.text", text: chars.slice(offset, offset + 1024).join("") };
+    }
   }
-  listen(inputElement, "compositionstart", () => { composing = true; });
-  listen(inputElement, "compositionend", () => { composing = false; commit(); });
-  listen(inputElement, "input", (event) => { if (!event.isComposing) commit(); });
-  listen(inputElement, "beforeinput", (event) => {
-    if (!composing && keyboardActive && event.inputType === "deleteContentBackward" && !inputElement.value) {
+}
+
+export function attachTextInput({
+  buttonElement, dialogElement, inputElement, closeButton, sendButton,
+  restoreButton, errorElement, draft, onOpenChange,
+}, sendControl) {
+  const { listen, cleanup: removeListeners } = createListenerTracker();
+  let active = false;
+  let composing = false;
+  let sending = false;
+  let disposed = false;
+  let backdropPress = false;
+  inputElement.value = draft.text;
+
+  const syncUi = () => {
+    buttonElement.classList.toggle("active", active);
+    buttonElement.setAttribute("aria-expanded", String(active));
+    sendButton.disabled = disposed || !active || composing || sending || inputElement.value.length === 0;
+    if (errorElement.textContent !== draft.error) errorElement.textContent = draft.error;
+    errorElement.hidden = !draft.error;
+    restoreButton.hidden = !draft.error || !draft.lastSent || inputElement.value.length > 0;
+  };
+  const positionDialog = () => {
+    if (!active) return;
+    const viewport = window.visualViewport;
+    dialogElement.style.setProperty("--visible-top", `${viewport?.offsetTop ?? 0}px`);
+    dialogElement.style.setProperty("--visible-left", `${viewport?.offsetLeft ?? 0}px`);
+    dialogElement.style.setProperty("--visible-width", `${viewport?.width ?? window.innerWidth}px`);
+    dialogElement.style.setProperty("--visible-height", `${viewport?.height ?? window.innerHeight}px`);
+  };
+  const finishClosing = (restoreFocus = true) => {
+    if (!active) return;
+    draft.text = inputElement.value;
+    active = composing = false;
+    inputElement.blur();
+    syncUi();
+    onOpenChange?.(false);
+    if (restoreFocus && !disposed) buttonElement.focus({ preventScroll: true });
+  };
+  const close = () => {
+    dialogElement.close();
+    finishClosing();
+  };
+  const open = () => {
+    if (disposed || active) return;
+    active = true;
+    positionDialog();
+    dialogElement.showModal();
+    syncUi();
+    onOpenChange?.(true);
+    // Keep focus inside the click handler so iOS can open its software keyboard.
+    inputElement.focus({ preventScroll: true });
+  };
+  const reportError = (message) => {
+    draft.error = message;
+    syncUi();
+  };
+
+  listen(buttonElement, "click", open);
+  listen(closeButton, "pointerdown", (event) => {
+    // Keep the textarea focused until click closes the panel. Blurring here
+    // dismisses the mobile keyboard and can move the button before click.
+    if (active && event.pointerType === "touch" && event.isPrimary && event.button === 0) {
       event.preventDefault();
-      sendKey("Backspace");
     }
   });
-  listen(inputElement, "keydown", (event) => {
-    if (!keyboardActive || composing || event.isComposing || event.keyCode === 229) return;
-    if (!SPECIAL_KEYS.has(event.key)) return; // Printable characters, spaces and Backspace use input events.
-    event.preventDefault();
-    sendKey(event.key);
-    // Remote cursor movement invalidates the local replacement context.
-    previousValue = inputElement.value = "";
+  listen(closeButton, "click", close);
+  listen(dialogElement, "close", () => {
+    // A queued close event must not close an editor that has already reopened.
+    if (!dialogElement.open) finishClosing();
   });
-  listen(inputElement, "focus", () => { keyboardActive = true; syncUi(); });
-  listen(inputElement, "blur", () => {
-    window.clearTimeout(focusTimer);
-    if (keyboardActive) focusTimer = window.setTimeout(focus, 0);
+  listen(dialogElement, "cancel", (event) => {
+    if (composing) event.preventDefault();
   });
+  const outsideDialog = (event) => {
+    const rect = dialogElement.getBoundingClientRect();
+    return event.clientX < rect.left || event.clientX > rect.right
+      || event.clientY < rect.top || event.clientY > rect.bottom;
+  };
+  listen(dialogElement, "pointerdown", (event) => {
+    backdropPress = event.target === dialogElement && outsideDialog(event);
+  });
+  listen(dialogElement, "click", (event) => {
+    if (backdropPress && event.target === dialogElement && outsideDialog(event)) close();
+    backdropPress = false;
+  });
+  listen(inputElement, "compositionstart", () => { composing = true; syncUi(); });
+  listen(inputElement, "compositionend", () => {
+    composing = false;
+    draft.text = inputElement.value;
+    syncUi();
+  });
+  listen(inputElement, "input", () => {
+    draft.text = inputElement.value;
+    syncUi();
+  });
+  listen(restoreButton, "click", () => {
+    inputElement.value = draft.text = draft.lastSent;
+    syncUi();
+    inputElement.focus({ preventScroll: true });
+  });
+  listen(sendButton, "click", () => {
+    if (disposed || !active || composing || sending || !inputElement.value) return;
+    sending = true;
+    draft.text = draft.lastSent = inputElement.value;
+    draft.error = "";
+    syncUi();
+    try {
+      for (const command of textCommands(draft.text)) {
+        if (disposed || !sendControl(command)) {
+          reportError("Text may have been partially sent. Check the remote window before retrying.");
+          return;
+        }
+      }
+      if (disposed) return;
+      inputElement.value = draft.text = "";
+      close();
+    } finally {
+      sending = false;
+      syncUi();
+    }
+  });
+  listen(window, "resize", positionDialog);
+  if (window.visualViewport) {
+    listen(window.visualViewport, "resize", positionDialog);
+    listen(window.visualViewport, "scroll", positionDialog);
+  }
+  buttonElement.disabled = false;
   syncUi();
+
   return {
-    isActive: () => keyboardActive,
+    isActive: () => active,
+    reportError,
     cleanup() {
       disposed = true;
-      keyboardActive = false;
-      window.clearTimeout(focusTimer);
+      buttonElement.disabled = true;
       removeListeners();
-      inputElement.blur();
-      previousValue = inputElement.value = "";
-      syncUi();
+      dialogElement.close();
+      finishClosing(false);
     },
   };
 }

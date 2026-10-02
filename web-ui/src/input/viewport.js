@@ -52,6 +52,7 @@ export function attachViewportSync(sendControl, options = {}) {
   };
 
   const scheduleViewportSync = () => {
+    if (disposed) return;
     if (timerId) {
       window.clearTimeout(timerId);
     }
@@ -93,6 +94,7 @@ export function attachViewportSync(sendControl, options = {}) {
   if (screen.orientation?.addEventListener) listen(screen.orientation, "change", onOrientationChange);
 
   return {
+    refresh: scheduleViewportSync,
     cleanup() {
       disposed = true;
       cancelAnimationFrame(animationId);
