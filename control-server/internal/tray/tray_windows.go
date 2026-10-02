@@ -9,6 +9,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"share-app-host/internal/config"
 )
 
 var (
@@ -38,16 +40,17 @@ var (
 )
 
 const (
-	wmClose       = 0x0010
-	wmContextMenu = 0x007b
-	wmTray        = 0x8001 // WM_APP + 1
-	ninSelect     = 0x0400
-	ninKeySelect  = 0x0401
-	nimAdd        = 0
-	nimDelete     = 2
-	nimSetFocus   = 3
-	nimSetVersion = 4
-	exitCommand   = 1
+	wmClose         = 0x0010
+	wmContextMenu   = 0x007b
+	wmTray          = 0x8001 // WM_APP + 1
+	ninSelect       = 0x0400
+	ninKeySelect    = 0x0401
+	nimAdd          = 0
+	nimDelete       = 2
+	nimSetFocus     = 3
+	nimSetVersion   = 4
+	exitCommand     = 1
+	openDataCommand = 2
 )
 
 type windowClass struct {
@@ -235,6 +238,10 @@ func showMenu(hwnd uintptr, data *notifyData, onExit func()) error {
 		return callError("create menu", err)
 	}
 	defer destroyMenu.Call(menu)
+	openLabel := windows.StringToUTF16Ptr("Open data folder（データフォルダーを開く）")
+	if ok, _, err := appendMenu.Call(menu, 0, openDataCommand, uintptr(unsafe.Pointer(openLabel))); ok == 0 {
+		return callError("append open data folder menu", err)
+	}
 	label := windows.StringToUTF16Ptr("Exit（終了）")
 	if ok, _, err := appendMenu.Call(menu, 0, exitCommand, uintptr(unsafe.Pointer(label))); ok == 0 {
 		return callError("append exit menu", err)
@@ -249,9 +256,27 @@ func showMenu(hwnd uintptr, data *notifyData, onExit func()) error {
 	command, _, _ := trackMenu.Call(menu, 0x0100|0x0002, uintptr(position.X), uintptr(position.Y), 0, hwnd, 0)
 	postMessage.Call(hwnd, 0, 0, 0)
 	notifyIcon.Call(nimSetFocus, uintptr(unsafe.Pointer(data)))
-	if command == exitCommand {
+	switch command {
+	case openDataCommand:
+		return openDataFolder(hwnd)
+	case exitCommand:
 		log.Print("exit requested from tray")
 		onExit()
+	}
+	return nil
+}
+
+func openDataFolder(hwnd uintptr) error {
+	dir, err := config.UserDataDir()
+	if err != nil {
+		return fmt.Errorf("tray: open data folder: %w", err)
+	}
+	path, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		return fmt.Errorf("tray: data folder path: %w", err)
+	}
+	if err := windows.ShellExecute(windows.Handle(hwnd), windows.StringToUTF16Ptr("open"), path, nil, nil, windows.SW_SHOWNORMAL); err != nil {
+		return fmt.Errorf("tray: open data folder %q: %w", dir, err)
 	}
 	return nil
 }

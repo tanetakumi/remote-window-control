@@ -35,7 +35,7 @@ Download a Windows ZIP from [Releases](https://github.com/tanetakumi/remote-wind
 3. Double-click `share-host.exe`. The packaged host runs in the background without a console window and displays a PC-and-phone icon in the Windows notification area; CaptureProbe and FFmpeg also run without console windows.
 4. On the Windows PC, open <http://127.0.0.1:8443/> and select a window.
 
-Closing the browser leaves the host running. Hover over the notification-area icon to see **Share App — 起動中**. Right-click it and choose **Exit（終了）** to stop the host and its active connections. If the icon is hidden, open the **^** overflow beside the clock. Diagnostics are saved to `%LOCALAPPDATA%\ShareApp\logs\share-host.log`.
+Closing the browser leaves the host running. Hover over the notification-area icon to see **Share App — 起動中**. Right-click it and choose **Open data folder（データフォルダーを開く）** to open `%LOCALAPPDATA%\ShareApp` in File Explorer, or **Exit（終了）** to stop the host and its active connections. If the icon is hidden, open the **^** overflow beside the clock. Diagnostics are saved to `%LOCALAPPDATA%\ShareApp\logs\share-host.log`.
 
 The default address is available only from the Windows PC itself. To use the app from a phone, set up a trusted network path as described below.
 
