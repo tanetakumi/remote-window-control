@@ -19,7 +19,7 @@ function* textCommands(text, shiftNewline) {
 
 export function attachTextInput({
   buttonElement, dialogElement, inputElement, closeButton, sendButton,
-  restoreButton, newlineButton, errorElement, draft, onOpenChange,
+  restoreButton, enterButton, shiftEnterButton, errorElement, draft, onOpenChange,
 }, sendControl) {
   const { listen, cleanup: removeListeners } = createListenerTracker();
   let active = false;
@@ -35,8 +35,8 @@ export function attachTextInput({
     sendButton.disabled = disposed || !active || composing || sending || inputElement.value.length === 0;
     if (errorElement.textContent !== draft.error) errorElement.textContent = draft.error;
     errorElement.hidden = !draft.error;
-    newlineButton.classList.toggle("active", !!draft.shiftNewline);
-    newlineButton.setAttribute("aria-pressed", String(!!draft.shiftNewline));
+    enterButton.setAttribute("aria-pressed", String(!draft.shiftNewline));
+    shiftEnterButton.setAttribute("aria-pressed", String(!!draft.shiftNewline));
     restoreButton.hidden = !draft.error || !draft.lastSent || inputElement.value.length > 0;
   };
   const positionDialog = () => {
@@ -54,6 +54,8 @@ export function attachTextInput({
     inputElement.blur();
     syncUi();
     onOpenChange?.(false);
+    // iOS may leave the page scrolled after the keyboard closes.
+    if (!disposed) window.scrollTo?.(0, 0);
     if (restoreFocus && !disposed) buttonElement.focus({ preventScroll: true });
   };
   const close = () => {
@@ -76,13 +78,17 @@ export function attachTextInput({
   };
 
   listen(buttonElement, "click", open);
-  listen(closeButton, "pointerdown", (event) => {
-    // Keep the textarea focused until click closes the panel. Blurring here
-    // dismisses the mobile keyboard and can move the button before click.
+  const keepFocus = (event) => {
+    // Keep the textarea focused until click. Blurring on a button press
+    // dismisses the mobile keyboard, and refocusing afterwards makes iOS
+    // scroll the page out from under the top bar.
     if (active && event.pointerType === "touch" && event.isPrimary && event.button === 0) {
       event.preventDefault();
     }
-  });
+  };
+  for (const button of [closeButton, enterButton, shiftEnterButton, sendButton, restoreButton]) {
+    listen(button, "pointerdown", keepFocus);
+  }
   listen(closeButton, "click", close);
   listen(dialogElement, "close", () => {
     // A queued close event must not close an editor that has already reopened.
@@ -113,10 +119,12 @@ export function attachTextInput({
     draft.text = inputElement.value;
     syncUi();
   });
-  listen(newlineButton, "click", () => {
-    draft.shiftNewline = !draft.shiftNewline;
-    syncUi();
-  });
+  for (const [button, shift] of [[enterButton, false], [shiftEnterButton, true]]) {
+    listen(button, "click", () => {
+      draft.shiftNewline = shift;
+      syncUi();
+    });
+  }
   listen(restoreButton, "click", () => {
     inputElement.value = draft.text = draft.lastSent;
     syncUi();

@@ -235,7 +235,8 @@ async function startRemoteControl() {
       closeButton: document.querySelector("#close-text-input"),
       sendButton: document.querySelector("#send-text-input"),
       restoreButton: document.querySelector("#restore-text-input"),
-      newlineButton: document.querySelector("#newline-mode"),
+      enterButton: document.querySelector("#newline-enter"),
+      shiftEnterButton: document.querySelector("#newline-shift-enter"),
       errorElement: document.querySelector("#text-input-error"),
       draft: textDraft,
       onOpenChange: (active) => {

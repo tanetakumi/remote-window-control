@@ -931,17 +931,32 @@ body {
   touch-action: manipulation;
 }
 
-#newline-mode {
-  min-height: 0;
-  height: 32px;
-  padding: 0 10px;
-  font-size: 0.75rem;
-  opacity: 0.7;
+.segmented {
+  display: inline-flex;
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
-#newline-mode.active {
-  opacity: 1;
+#text-dialog .segmented button {
+  min-height: 36px;
+  border-radius: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+#text-dialog .segmented button + button {
+  border-left: 0;
+}
+
+#text-dialog .segmented button[aria-pressed="true"] {
+  background: var(--color-primary);
   border-color: rgba(99, 102, 241, 0.8);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.text-dialog-actions {
+  flex-wrap: wrap;
 }
 
 #send-text-input {

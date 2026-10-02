@@ -38,7 +38,7 @@ function createEditor(draft = { text: "", lastSent: "", error: "" }, sendControl
   const controls = {
     buttonElement: new Element(), dialogElement: new Element(), inputElement: new Element(),
     closeButton: new Element(), sendButton: new Element(), restoreButton: new Element(),
-    newlineButton: new Element(),
+    enterButton: new Element(), shiftEnterButton: new Element(),
     errorElement: new Element(), draft,
   };
   const sent = [];
@@ -124,8 +124,9 @@ test("newlines are ordered between text chunks without appending an extra Enter"
 test("Shift newline mode wraps each line break in Shift", () => {
   const { controls, sent, editor } = createEditor();
   emit(controls.buttonElement, "click");
-  emit(controls.newlineButton, "click");
-  assert.equal(controls.newlineButton.attributes["aria-pressed"], "true");
+  emit(controls.shiftEnterButton, "click");
+  assert.equal(controls.shiftEnterButton.attributes["aria-pressed"], "true");
+  assert.equal(controls.enterButton.attributes["aria-pressed"], "false");
   edit(controls, "a\nb");
   emit(controls.sendButton, "click");
   assert.deepEqual(sent, [
@@ -135,6 +136,18 @@ test("Shift newline mode wraps each line break in Shift", () => {
     { type: "input.keyUp", key: "Shift" },
     { type: "input.text", text: "b" },
   ]);
+  editor.cleanup();
+});
+
+test("touch presses on dialog buttons do not steal focus from the textarea", () => {
+  const { controls, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  for (const name of ["enterButton", "shiftEnterButton", "sendButton", "restoreButton", "closeButton"]) {
+    const event = new Event("pointerdown", { cancelable: true });
+    Object.assign(event, { pointerType: "touch", isPrimary: true, button: 0 });
+    controls[name].dispatchEvent(event);
+    assert.equal(event.defaultPrevented, true, name);
+  }
   editor.cleanup();
 });
 

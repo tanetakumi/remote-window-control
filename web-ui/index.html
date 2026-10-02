@@ -141,8 +141,11 @@
           ></textarea>
           <p id="text-input-error" role="status" hidden></p>
           <div class="text-dialog-actions">
-            <button id="newline-mode" type="button" aria-pressed="false" title="Send line breaks as Shift+Enter so chat apps don't submit">Shift+Enter</button>
             <button id="restore-text-input" type="button" hidden>Restore last text</button>
+            <div class="segmented" role="group" aria-label="Line break sent as">
+              <button id="newline-enter" type="button" aria-pressed="true" title="Send line breaks as Enter">Enter</button>
+              <button id="newline-shift-enter" type="button" aria-pressed="false" title="Send line breaks as Shift+Enter">Shift+Enter</button>
+            </div>
             <button id="send-text-input" type="button" disabled>Send</button>
           </div>
         </dialog>
