@@ -14,7 +14,7 @@ On Ubuntu 24.04 (also works on later Ubuntu), install the cross toolchain:
 ```sh
 sudo apt-get update
 sudo apt-get install --no-install-recommends gcc-mingw-w64-x86-64 \
-  mingw-w64-tools nasm make pkg-config curl xz-utils
+  g++-mingw-w64-x86-64 mingw-w64-tools nasm make pkg-config curl xz-utils
 bash scripts/ffmpeg/build.sh
 ```
 

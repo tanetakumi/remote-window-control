@@ -26,7 +26,7 @@ The script builds the web UI, CaptureProbe, and Windows host, runs frontend and 
 On Windows:
 
 ```powershell
-./installer/build.ps1 -Version 0.1.1
+./installer/build.ps1 -Version 0.1.2
 ```
 
 The script downloads a SHA-256-pinned Inno Setup compiler on first use. To use an existing compiler, pass `-Compiler <path-to-ISCC.exe>`.
@@ -36,7 +36,7 @@ The script downloads a SHA-256-pinned Inno Setup compiler on first use. To use a
 The installer definition is `installer/share-app.iss`. To check installation, upgrade, uninstallation, and user data preservation, run on a disposable Windows profile:
 
 ```powershell
-./installer/test.ps1 -InstallerPath ./dist/releases/ShareApp-0.1.1-Setup.exe
+./installer/test.ps1 -InstallerPath ./dist/releases/ShareApp-0.1.2-Setup.exe
 ```
 
 ## GitHub Actions and releases

@@ -26,7 +26,7 @@ jobs:
       - name: Install FFmpeg cross toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 mingw-w64-tools nasm make pkg-config curl xz-utils
+          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 mingw-w64-tools nasm make pkg-config curl xz-utils
       - name: Build pinned LGPL FFmpeg and corresponding sources
         run: bash scripts/ffmpeg/build.sh
       - name: Upload FFmpeg with source bundle
