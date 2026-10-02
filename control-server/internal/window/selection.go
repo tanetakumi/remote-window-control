@@ -61,16 +61,6 @@ func (s *Selection) Set(w Info) {
 	s.has = true
 }
 
-// Select resolves the window with the given handle and makes it the target.
-func (s *Selection) Select(ctx context.Context, handle uint64) (Info, error) {
-	w, err := s.Resolve(ctx, handle)
-	if err != nil {
-		return Info{}, err
-	}
-	s.Set(w)
-	return w, nil
-}
-
 // Current returns the selected window, if any.
 func (s *Selection) Current() (Info, bool) {
 	s.mu.RLock()

@@ -49,7 +49,6 @@ type Options struct {
 // Server is the host's HTTP server.
 type Server struct {
 	httpServer *http.Server
-	handler    http.Handler
 
 	clientDir string
 	windows   Windows
@@ -77,10 +76,9 @@ func New(opts Options) *Server {
 	mux.Handle("/ws", control)
 	mux.HandleFunc("/", s.handleStatic)
 
-	s.handler = guard(mux)
 	s.httpServer = &http.Server{
 		Addr:              opts.Addr,
-		Handler:           s.handler,
+		Handler:           guard(mux),
 		ReadHeaderTimeout: readHeaderTimeout,
 		IdleTimeout:       idleTimeout,
 	}
@@ -88,7 +86,7 @@ func New(opts Options) *Server {
 }
 
 // Handler returns the complete request handler, including the origin guard.
-func (s *Server) Handler() http.Handler { return s.handler }
+func (s *Server) Handler() http.Handler { return s.httpServer.Handler }
 
 // ListenAndServe serves requests until Shutdown is called.
 func (s *Server) ListenAndServe() error { return s.httpServer.ListenAndServe() }

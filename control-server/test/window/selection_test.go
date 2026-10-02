@@ -20,6 +20,16 @@ func newSelection(windows ...window.Info) (*window.Selection, *fakeLister) {
 	return window.NewSelection(lister), lister
 }
 
+// choose selects a window the way the host does: resolve it, then set it.
+func choose(s *window.Selection, handle uint64) (window.Info, error) {
+	w, err := s.Resolve(context.Background(), handle)
+	if err != nil {
+		return window.Info{}, err
+	}
+	s.Set(w)
+	return w, nil
+}
+
 func isClosed(ch <-chan struct{}) bool {
 	select {
 	case <-ch:
@@ -44,15 +54,15 @@ func TestNothingSelectedInitially(t *testing.T) {
 
 func TestSelectRequiresAListedWindow(t *testing.T) {
 	s, _ := newSelection(window.Info{Handle: 1}, window.Info{Handle: 2})
-	if _, err := s.Select(context.Background(), 99); !errors.Is(err, window.ErrNotFound) {
-		t.Fatalf("Select(unlisted) error = %v", err)
+	if _, err := choose(s, 99); !errors.Is(err, window.ErrNotFound) {
+		t.Fatalf("choose(unlisted) error = %v", err)
 	}
 	if _, ok := s.Current(); ok {
 		t.Fatal("failed selection changed the target")
 	}
-	got, err := s.Select(context.Background(), 2)
+	got, err := choose(s, 2)
 	if err != nil || got.Handle != 2 {
-		t.Fatalf("Select(2) = %+v, %v", got, err)
+		t.Fatalf("choose(2) = %+v, %v", got, err)
 	}
 	if cur, ok := s.Current(); !ok || cur.Handle != 2 {
 		t.Fatalf("Current() = %+v, %v", cur, ok)
@@ -64,12 +74,12 @@ func TestSelectRequiresAListedWindow(t *testing.T) {
 
 func TestListerFailureLeavesSelectionUntouched(t *testing.T) {
 	s, lister := newSelection(window.Info{Handle: 1})
-	if _, err := s.Select(context.Background(), 1); err != nil {
+	if _, err := choose(s, 1); err != nil {
 		t.Fatal(err)
 	}
 	lister.err = errors.New("probe down")
-	if _, err := s.Select(context.Background(), 1); !errors.Is(err, lister.err) {
-		t.Fatalf("Select error = %v", err)
+	if _, err := choose(s, 1); !errors.Is(err, lister.err) {
+		t.Fatalf("choose error = %v", err)
 	}
 	if _, err := s.List(context.Background()); !errors.Is(err, lister.err) {
 		t.Fatalf("List error = %v", err)
@@ -83,7 +93,7 @@ func TestChangeNotificationFiresOnlyWhenHandleChanges(t *testing.T) {
 	s, lister := newSelection(window.Info{Handle: 1, Title: "old"}, window.Info{Handle: 2})
 	_, _, first := s.State()
 
-	if _, err := s.Select(context.Background(), 1); err != nil {
+	if _, err := choose(s, 1); err != nil {
 		t.Fatal(err)
 	}
 	if !isClosed(first) {
@@ -92,7 +102,7 @@ func TestChangeNotificationFiresOnlyWhenHandleChanges(t *testing.T) {
 
 	_, _, second := s.State()
 	lister.windows[0].Title = "renamed"
-	if _, err := s.Select(context.Background(), 1); err != nil {
+	if _, err := choose(s, 1); err != nil {
 		t.Fatal(err)
 	}
 	if isClosed(second) {
@@ -102,7 +112,7 @@ func TestChangeNotificationFiresOnlyWhenHandleChanges(t *testing.T) {
 		t.Fatalf("window metadata not refreshed: %+v", cur)
 	}
 
-	if _, err := s.Select(context.Background(), 2); err != nil {
+	if _, err := choose(s, 2); err != nil {
 		t.Fatal(err)
 	}
 	if !isClosed(second) {

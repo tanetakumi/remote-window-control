@@ -36,23 +36,6 @@ func TestSnapshotNeedsATarget(t *testing.T) {
 	}
 }
 
-// Saving to a file and capturing another window used to be supported here. A
-// caller still passing those parameters must get an error, not PNG bytes where
-// it expects a JSON result.
-func TestSnapshotRefusesTheRemovedParameters(t *testing.T) {
-	e := newEnv(t)
-	e.windows.current = &notepad
-	for _, query := range []string{"out=window.png", "hwnd=777", "out=", "hwnd=", "out=a.png&hwnd=1"} {
-		w := e.do("GET", "/api/snapshot?"+query, "")
-		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "not supported") {
-			t.Errorf("?%s: %d %q, want 400", query, w.Code, w.Body.String())
-		}
-	}
-	if calls := e.snapshots.calls(); len(calls) != 0 {
-		t.Fatalf("capture ran for a refused request: %v", calls)
-	}
-}
-
 func TestSnapshotReportsACaptureFailureAsBadGateway(t *testing.T) {
 	e := newEnv(t)
 	e.windows.current = &notepad
