@@ -57,10 +57,11 @@ func FitClientSize(desiredWidth, desiredHeight, maxWidth, maxHeight int) (int, i
 }
 
 // PlanClientResize returns the outer window rectangle that gives the window a
-// client area of wantWidth x wantHeight. window and client are the current
-// outer and client rectangles; the difference between them is the frame. When
-// work (the monitor work area) is known the size is fitted into it and the
-// window is moved back inside it. Pass nil when the work area is unknown.
+// client area at 90% of the requested size after fitting to the monitor work
+// area, subject to the minimum size and even dimensions. window and client
+// are the current outer and client rectangles; the difference between them
+// is the frame. The window is moved back inside work when it is known.
+// Pass nil when the work area is unknown.
 func PlanClientResize(window, client Rect, work *Rect, wantWidth, wantHeight int) Rect {
 	frameWidth := int(window.Width() - client.Width())
 	frameHeight := int(window.Height() - client.Height())
@@ -69,6 +70,10 @@ func PlanClientResize(window, client Rect, work *Rect, wantWidth, wantHeight int
 		wantWidth, wantHeight = FitClientSize(wantWidth, wantHeight,
 			int(work.Width())-frameWidth, int(work.Height())-frameHeight)
 	}
+	// Reduce the fitted size so oversized portrait requests also become
+	// smaller. This affects window geometry only, never input coordinates.
+	wantWidth = int(math.Round(float64(clampDimension(wantWidth)) * 0.9))
+	wantHeight = int(math.Round(float64(clampDimension(wantHeight)) * 0.9))
 	width := clampDimension(evenDimension(wantWidth) + frameWidth)
 	height := clampDimension(evenDimension(wantHeight) + frameHeight)
 

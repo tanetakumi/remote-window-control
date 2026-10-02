@@ -6,9 +6,9 @@ const (
 	swpAsyncWindowPos = 0x4000
 )
 
-// ResizeClient resizes the window so its client area is wantWidth x wantHeight,
-// fitted to the monitor work area (see PlanClientResize). It does not activate
-// the window or change its z-order.
+// ResizeClient resizes the window's client area to 90% of wantWidth x wantHeight
+// after fitting to the monitor work area (see PlanClientResize). It does not
+// activate the window or change its z-order.
 func ResizeClient(hwnd HWND, wantWidth, wantHeight int) error {
 	window, err := windowRect(hwnd)
 	if err != nil {

@@ -99,9 +99,9 @@ func TestPlanClientResize(t *testing.T) {
 	client := win32.Rect{Right: 784, Bottom: 561}
 	work := win32.Rect{Left: 0, Top: 0, Right: 1920, Bottom: 1040}
 
-	t.Run("adds the frame to the requested client size", func(t *testing.T) {
+	t.Run("uses 90 percent of the client size and adds the unscaled frame", func(t *testing.T) {
 		got := win32.PlanClientResize(window, client, &work, 1000, 700)
-		want := win32.Rect{Left: 100, Top: 100, Right: 100 + 1016, Bottom: 100 + 739}
+		want := win32.Rect{Left: 100, Top: 100, Right: 100 + 916, Bottom: 100 + 669}
 		if got != want {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
@@ -109,13 +109,17 @@ func TestPlanClientResize(t *testing.T) {
 	t.Run("moves the window back inside the work area", func(t *testing.T) {
 		right := win32.Rect{Left: 1500, Top: 800, Right: 2300, Bottom: 1400}
 		got := win32.PlanClientResize(right, client, &work, 1000, 700)
-		want := win32.Rect{Left: 1920 - 1016, Top: 1040 - 739, Right: 1920, Bottom: 1040}
+		want := win32.Rect{Left: 1920 - 916, Top: 1040 - 669, Right: 1920, Bottom: 1040}
 		if got != want {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
 	})
 	t.Run("shrinks oversized requests to the work area", func(t *testing.T) {
 		got := win32.PlanClientResize(window, client, &work, 4000, 3000)
+		// The request first fits to 1334x1000, then shrinks to 1200x900.
+		if got.Width()-16 != 1200 || got.Height()-39 != 900 {
+			t.Fatalf("client size = %dx%d, want 1200x900", got.Width()-16, got.Height()-39)
+		}
 		if got.Width() > work.Width() || got.Height() > work.Height() {
 			t.Fatalf("result %+v exceeds work area %+v", got, work)
 		}
@@ -130,7 +134,7 @@ func TestPlanClientResize(t *testing.T) {
 	})
 	t.Run("keeps the position when the work area is unknown", func(t *testing.T) {
 		got := win32.PlanClientResize(window, client, nil, 1000, 700)
-		want := win32.Rect{Left: 100, Top: 100, Right: 100 + 1016, Bottom: 100 + 739}
+		want := win32.Rect{Left: 100, Top: 100, Right: 100 + 916, Bottom: 100 + 669}
 		if got != want {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
