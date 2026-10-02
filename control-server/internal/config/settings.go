@@ -12,13 +12,6 @@ import (
 	"share-app-host/internal/media"
 )
 
-// Newline values of Settings.Newline: the key the web client sends for each
-// line break of a text input.
-const (
-	NewlineEnter      = "enter"
-	NewlineShiftEnter = "shift-enter"
-)
-
 // ErrInvalidSettings is wrapped by every Settings validation failure.
 var ErrInvalidSettings = errors.New("invalid settings")
 
@@ -31,13 +24,11 @@ type Settings struct {
 	// CRF is the video quality, minCRF to maxCRF; lower is better and larger.
 	// A new value applies to the next connection.
 	CRF int `json:"crf"`
-	// Newline is NewlineEnter or NewlineShiftEnter.
-	Newline string `json:"newline"`
 }
 
 // DefaultSettings returns the settings used while config.json does not exist.
 func DefaultSettings() Settings {
-	return Settings{FPS: media.DefaultFPS, CRF: media.DefaultCRF, Newline: NewlineEnter}
+	return Settings{FPS: media.DefaultFPS, CRF: media.DefaultCRF}
 }
 
 // Validate reports whether the settings are within their allowed ranges.
@@ -47,9 +38,6 @@ func (s Settings) Validate() error {
 	}
 	if s.CRF < minCRF || s.CRF > maxCRF {
 		return fmt.Errorf("%w: crf must be an integer from %d to %d", ErrInvalidSettings, minCRF, maxCRF)
-	}
-	if s.Newline != NewlineEnter && s.Newline != NewlineShiftEnter {
-		return fmt.Errorf("%w: newline must be %q or %q", ErrInvalidSettings, NewlineEnter, NewlineShiftEnter)
 	}
 	return nil
 }

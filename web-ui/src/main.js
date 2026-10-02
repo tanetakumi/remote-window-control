@@ -194,7 +194,6 @@ async function startRemoteControl() {
   keyboardButton.disabled = true;
   specialKeysButton.disabled = true;
   setStatus("connecting", "Connecting…");
-  const { newline } = await fetchSettings();
   let keyboard;
   let viewport;
   const remote = await createRemoteConnection({
@@ -242,7 +241,6 @@ async function startRemoteControl() {
       restoreButton: document.querySelector("#restore-text-input"),
       errorElement: document.querySelector("#text-input-error"),
       draft: textDraft,
-      shiftNewline: newline === "shift-enter",
       onOpenChange: (active) => {
         specialKeys.setTextInputActive(active);
         viewport?.refresh();
@@ -293,8 +291,6 @@ refreshButton?.addEventListener("click", () => {
 });
 
 const settings = attachSettingsScreen({
-  enterButton: document.querySelector("#settings-newline-enter"),
-  shiftEnterButton: document.querySelector("#settings-newline-shift-enter"),
   fpsInput: document.querySelector("#settings-fps"),
   fpsValue: document.querySelector("#settings-fps-value"),
   crfInput: document.querySelector("#settings-crf"),

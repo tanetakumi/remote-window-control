@@ -66,7 +66,7 @@ test("window loading preserves helper diagnostics and falls back on empty errors
 });
 
 test("settings are read and saved as JSON", async (t) => {
-  const settings = { fps: 12, crf: 24, newline: "shift-enter" };
+  const settings = { fps: 12, crf: 24 };
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
     calls.push({ url, options });
@@ -92,9 +92,9 @@ test("settings errors carry the host message", async (t) => {
   t.mock.method(globalThis, "fetch", async () =>
     new Response("invalid settings: fps must be an integer from 1 to 30\n", { status: 400 }),
   );
-  await assert.rejects(saveSettings({ fps: 99, crf: 31, newline: "enter" }), /fps must be an integer/);
+  await assert.rejects(saveSettings({ fps: 99, crf: 31 }), /fps must be an integer/);
 
   t.mock.method(globalThis, "fetch", async () => new Response("", { status: 500 }));
   await assert.rejects(fetchSettings(), /Could not load the settings/);
-  await assert.rejects(saveSettings({ fps: 8, crf: 31, newline: "enter" }), /Could not save the settings/);
+  await assert.rejects(saveSettings({ fps: 8, crf: 31 }), /Could not save the settings/);
 });

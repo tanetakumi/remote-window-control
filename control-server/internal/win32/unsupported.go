@@ -11,7 +11,7 @@ func PostMouseButton(HWND, Button, bool, int32, int32) error {
 	return ErrUnsupported
 }
 func SendMouseWheel(HWND, int32, int32, int32) error { return ErrUnsupported }
-func PostText(HWND, string) error                    { return ErrUnsupported }
+func SetClipboardText(string) error                  { return ErrUnsupported }
 func SendKey(uint16, bool) error                     { return ErrUnsupported }
 func IsForeground(HWND) bool                         { return false }
 func ClientScreenRect(HWND) (Rect, error)            { return Rect{}, ErrUnsupported }

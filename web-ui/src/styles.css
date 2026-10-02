@@ -275,35 +275,6 @@ body {
   font-size: 0.95rem;
 }
 
-.segmented {
-  display: inline-flex;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.segmented button {
-  min-height: 44px;
-  padding: 0 16px;
-  border: 1px solid var(--border-subtle);
-  background: var(--control-bg);
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 0.88rem;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.segmented button + button {
-  border-left: 0;
-}
-
-.segmented button[aria-pressed="true"] {
-  background: var(--color-primary);
-  border-color: rgba(99, 102, 241, 0.8);
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
 .settings-slider label {
   flex: 1;
 }
@@ -321,7 +292,6 @@ body {
 }
 
 .settings-slider input[type="range"]:focus-visible,
-.segmented button:focus-visible,
 #settings-save:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

@@ -39,8 +39,8 @@ func TestSettingsCanBeReadAndSaved(t *testing.T) {
 	if got := decode[config.Settings](t, e.do("GET", "/api/settings", "")); got != config.DefaultSettings() {
 		t.Fatalf("GET = %+v", got)
 	}
-	w := e.doBody("PUT", "/api/settings", "", []byte(`{"fps":20,"crf":24,"newline":"shift-enter"}`))
-	want := config.Settings{FPS: 20, CRF: 24, Newline: config.NewlineShiftEnter}
+	w := e.doBody("PUT", "/api/settings", "", []byte(`{"fps":20,"crf":24}`))
+	want := config.Settings{FPS: 20, CRF: 24}
 	if w.Code != http.StatusOK || decode[config.Settings](t, w) != want {
 		t.Fatalf("PUT = %d %s", w.Code, w.Body)
 	}
@@ -58,11 +58,11 @@ func TestInvalidSettingsRequestsAreRejected(t *testing.T) {
 
 	for _, body := range []string{
 		`{"fps":`,
-		`{"fps":8}`,
-		`{"fps":99,"crf":31,"newline":"enter"}`,
-		`{"fps":8,"crf":64,"newline":"enter"}`,
-		`{"fps":8,"crf":31,"newline":"enter","extra":1}`,
-		`{"fps":"8","crf":31,"newline":"enter"}`,
+		`{"crf":31}`,
+		`{"fps":99,"crf":31}`,
+		`{"fps":8,"crf":64}`,
+		`{"fps":8,"crf":31,"extra":1}`,
+		`{"fps":"8","crf":31}`,
 	} {
 		if w := e.doBody("PUT", "/api/settings", "", []byte(body)); w.Code != http.StatusBadRequest {
 			t.Fatalf("PUT %s = %d, want 400", body, w.Code)
@@ -75,7 +75,7 @@ func TestInvalidSettingsRequestsAreRejected(t *testing.T) {
 
 func TestSettingsWriteFailureIsAServerError(t *testing.T) {
 	e := newEnv(t, withSettings(&fakeSettings{current: config.DefaultSettings(), saveErr: errors.New("disk full")}))
-	w := e.doBody("PUT", "/api/settings", "", []byte(`{"fps":8,"crf":31,"newline":"enter"}`))
+	w := e.doBody("PUT", "/api/settings", "", []byte(`{"fps":8,"crf":31}`))
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("PUT = %d, want 500", w.Code)
 	}
@@ -83,7 +83,7 @@ func TestSettingsWriteFailureIsAServerError(t *testing.T) {
 
 func TestSettingsRejectCrossOriginRequests(t *testing.T) {
 	e := newEnv(t, withSettings(&fakeSettings{current: config.DefaultSettings()}))
-	if w := e.doBody("PUT", "/api/settings", "https://other-host", []byte(`{"fps":8,"crf":31,"newline":"enter"}`)); w.Code != http.StatusForbidden {
+	if w := e.doBody("PUT", "/api/settings", "https://other-host", []byte(`{"fps":8,"crf":31}`)); w.Code != http.StatusForbidden {
 		t.Fatalf("cross-origin PUT = %d, want 403", w.Code)
 	}
 	if w := e.do("GET", "/api/settings", "https://other-host"); w.Code != http.StatusForbidden {

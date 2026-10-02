@@ -32,7 +32,7 @@ func TestMissingSettingsFileGivesTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := store.Get(), (config.Settings{FPS: 8, CRF: 31, Newline: config.NewlineEnter}); got != want {
+	if got, want := store.Get(), (config.Settings{FPS: 8, CRF: 31}); got != want {
 		t.Fatalf("settings = %+v, want %+v", got, want)
 	}
 }
@@ -43,7 +43,7 @@ func TestSavedSettingsSurviveReopening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := config.Settings{FPS: 15, CRF: 20, Newline: config.NewlineShiftEnter}
+	saved := config.Settings{FPS: 15, CRF: 20}
 	if err := store.Set(saved); err != nil {
 		t.Fatal(err)
 	}
@@ -70,12 +70,10 @@ func TestInvalidSettingsAreRejectedAndNotSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, bad := range []config.Settings{
-		{FPS: 0, CRF: 31, Newline: config.NewlineEnter},
-		{FPS: 31, CRF: 31, Newline: config.NewlineEnter},
-		{FPS: 8, CRF: -1, Newline: config.NewlineEnter},
-		{FPS: 8, CRF: 64, Newline: config.NewlineEnter},
-		{FPS: 8, CRF: 31, Newline: ""},
-		{FPS: 8, CRF: 31, Newline: "tab"},
+		{FPS: 0, CRF: 31},
+		{FPS: 31, CRF: 31},
+		{FPS: 8, CRF: -1},
+		{FPS: 8, CRF: 64},
 	} {
 		if err := store.Set(bad); !errors.Is(err, config.ErrInvalidSettings) {
 			t.Fatalf("Set(%+v) = %v, want ErrInvalidSettings", bad, err)
@@ -94,7 +92,7 @@ func TestFailedSaveKeepsTheCurrentSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = store.Set(config.Settings{FPS: 12, CRF: 31, Newline: config.NewlineEnter})
+	err = store.Set(config.Settings{FPS: 12, CRF: 31})
 	if err == nil || errors.Is(err, config.ErrInvalidSettings) {
 		t.Fatalf("Set = %v, want a write error", err)
 	}
@@ -105,14 +103,14 @@ func TestFailedSaveKeepsTheCurrentSettings(t *testing.T) {
 
 func TestSettingsFileFieldsDefaultWhenOmitted(t *testing.T) {
 	path := settingsPath(t)
-	if err := os.WriteFile(path, []byte(`{"newline": "shift-enter"}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"fps": 12}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	store, err := config.OpenSettings(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := store.Get(), (config.Settings{FPS: 8, CRF: 31, Newline: config.NewlineShiftEnter}); got != want {
+	if got, want := store.Get(), (config.Settings{FPS: 12, CRF: 31}); got != want {
 		t.Fatalf("settings = %+v, want %+v", got, want)
 	}
 }
@@ -123,7 +121,6 @@ func TestBadSettingsFileFailsAndNamesTheFile(t *testing.T) {
 		"unknown field": `{"fps": 8, "fpz": 9}`,
 		"fps range":     `{"fps": 99}`,
 		"crf range":     `{"crf": 64}`,
-		"newline":       `{"newline": "tab"}`,
 	} {
 		path := settingsPath(t)
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

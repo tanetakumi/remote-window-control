@@ -1,7 +1,9 @@
 package input
 
 import (
+	"errors"
 	"log"
+	"strings"
 	"time"
 
 	"share-app-host/internal/win32"
@@ -13,7 +15,7 @@ const (
 	tapHold = 25 * time.Millisecond
 	// inputDrain is how long the injector waits after the last key sent as
 	// real input. A window receives posted messages ahead of input from the
-	// system, so text posted straight afterwards could overtake those keys.
+	// system, so messages posted straight afterwards could overtake those keys.
 	inputDrain = 30 * time.Millisecond
 )
 
@@ -22,8 +24,9 @@ type TargetSource interface {
 	CurrentHandle() (uint64, bool)
 }
 
-// Keys delivers key presses to a window. Posted keys reach it without focus;
-// sent keys go through the system input stream to the foreground window.
+// Keys delivers key presses and the clipboard to a window. Posted keys reach it
+// without focus; sent keys go through the system input stream to the foreground
+// window.
 type Keys interface {
 	// Post posts a key message to hwnd.
 	Post(hwnd win32.HWND, vk uint16, up bool) error
@@ -31,6 +34,10 @@ type Keys interface {
 	Send(vk uint16, up bool) error
 	// Foreground reports whether hwnd is the active window.
 	Foreground(hwnd win32.HWND) bool
+	// Activate brings hwnd to the foreground; it does nothing if it already is.
+	Activate(hwnd win32.HWND) error
+	// SetClipboard replaces the clipboard text.
+	SetClipboard(text string) error
 }
 
 type win32Keys struct{}
@@ -38,13 +45,15 @@ type win32Keys struct{}
 func (win32Keys) Post(hwnd win32.HWND, vk uint16, up bool) error { return win32.PostKey(hwnd, vk, up) }
 func (win32Keys) Send(vk uint16, up bool) error                  { return win32.SendKey(vk, up) }
 func (win32Keys) Foreground(hwnd win32.HWND) bool                { return win32.IsForeground(hwnd) }
+func (win32Keys) Activate(hwnd win32.HWND) error                 { return win32.BringToForeground(hwnd) }
+func (win32Keys) SetClipboard(text string) error                 { return win32.SetClipboardText(text) }
 
 // MessageInjector is an Injector that posts window messages straight to the
-// target window, so input needs neither focus nor the physical cursor. The one
-// exception is Shift: applications read it from the system key state, which
-// posted messages cannot change, so a Shift press on a foreground target is
-// sent as real input, and every key until its release follows it there to stay
-// in order.
+// target window, so input needs neither focus nor the physical cursor. The
+// exceptions are Shift and pasted text: applications read Shift and Ctrl from
+// the system key state, which posted messages cannot change, so a Shift press
+// on a foreground target is sent as real input, and every key until its
+// release follows it there to stay in order. Text always needs the foreground.
 type MessageInjector struct {
 	target   TargetSource
 	keys     Keys
@@ -181,12 +190,33 @@ func (m *MessageInjector) key(c Command, up bool) error {
 	return err
 }
 
+// Text types text by putting it on the host clipboard and pressing Ctrl+V as
+// real input, so the text arrives in one piece, in order with other real input
+// and without passing through an input method editor. Applications read Ctrl
+// from the system key state, so the target must be in the foreground; it is
+// brought there first. The host clipboard is left holding the text.
 func (m *MessageInjector) Text(text string) error {
 	hwnd, err := m.handle()
 	if err != nil {
 		return err
 	}
-	return win32.PostText(hwnd, text)
+	if err := m.keys.Activate(hwnd); err != nil {
+		return err
+	}
+	crlf := strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\r\n")
+	if err := m.keys.SetClipboard(crlf); err != nil {
+		return err
+	}
+	if err := m.keys.Send(win32.VKControl, false); err != nil {
+		return err
+	}
+	err = m.keys.Send(win32.VKV, false)
+	if err == nil {
+		err = m.keys.Send(win32.VKV, true)
+	}
+	err = errors.Join(err, m.keys.Send(win32.VKControl, true))
+	time.Sleep(inputDrain)
+	return err
 }
 
 // handle returns the selected window, or window.ErrNotSelected.

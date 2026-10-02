@@ -1,7 +1,12 @@
 package win32
 
-// VKShift is VK_SHIFT, the only modifier the web client sends.
-const VKShift uint16 = 0x10
+// Virtual-key codes the host sends itself. Shift is also the only modifier the
+// web client sends.
+const (
+	VKShift   uint16 = 0x10
+	VKControl uint16 = 0x11
+	VKV       uint16 = 0x56
+)
 
 // domKeyToVirtualKey maps the KeyboardEvent.key values the web client sends
 // for non-printable keys to Win32 virtual-key codes. Printable characters are

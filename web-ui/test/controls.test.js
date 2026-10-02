@@ -34,11 +34,11 @@ globalThis.window = Object.assign(new EventTarget(), {
 });
 window.location = { protocol: "http:", host: "host:8443" };
 
-function createEditor(draft = { text: "", lastSent: "", error: "" }, sendControl, shiftNewline = false) {
+function createEditor(draft = { text: "", lastSent: "", error: "" }, sendControl) {
   const controls = {
     buttonElement: new Element(), dialogElement: new Element(), inputElement: new Element(),
     closeButton: new Element(), sendButton: new Element(), restoreButton: new Element(),
-    errorElement: new Element(), draft, shiftNewline,
+    errorElement: new Element(), draft,
   };
   const sent = [];
   const editor = attachTextInput(controls, sendControl ?? ((command) => { sent.push(command); return true; }));
@@ -93,45 +93,14 @@ test("empty drafts cannot send, but whitespace is preserved", () => {
   editor.cleanup();
 });
 
-test("large pasted text is sent on demand in bounded Unicode-safe commands", () => {
+test("the whole text, line breaks included, is sent as one command on demand", () => {
   const { controls, sent, editor } = createEditor();
   emit(controls.buttonElement, "click");
-  const text = "😀".repeat(2500);
+  const text = "日本\n\n😀".repeat(500) + "world";
   edit(controls, text, { inputType: "insertFromPaste" });
   assert.deepEqual(sent, []);
   emit(controls.sendButton, "click");
-  assert.equal(sent.length, 3);
-  assert.equal(sent.map((c) => c.text).join(""), text);
-  sent.forEach((c) => assert.ok(Buffer.byteLength(c.text) <= 4096));
-  editor.cleanup();
-});
-
-test("newlines are ordered between text chunks without appending an extra Enter", () => {
-  const { controls, sent, editor } = createEditor();
-  emit(controls.buttonElement, "click");
-  edit(controls, "日本\n\nworld");
-  emit(controls.sendButton, "click");
-  assert.deepEqual(sent, [
-    { type: "input.text", text: "日本" },
-    { type: "input.keyDown", key: "Enter" }, { type: "input.keyUp", key: "Enter" },
-    { type: "input.keyDown", key: "Enter" }, { type: "input.keyUp", key: "Enter" },
-    { type: "input.text", text: "world" },
-  ]);
-  editor.cleanup();
-});
-
-test("Shift newline mode wraps each line break in Shift", () => {
-  const { controls, sent, editor } = createEditor(undefined, undefined, true);
-  emit(controls.buttonElement, "click");
-  edit(controls, "a\nb");
-  emit(controls.sendButton, "click");
-  assert.deepEqual(sent, [
-    { type: "input.text", text: "a" },
-    { type: "input.keyDown", key: "Shift" },
-    { type: "input.keyDown", key: "Enter" }, { type: "input.keyUp", key: "Enter" },
-    { type: "input.keyUp", key: "Shift" },
-    { type: "input.text", text: "b" },
-  ]);
+  assert.deepEqual(sent, [{ type: "input.text", text }]);
   editor.cleanup();
 });
 
@@ -231,26 +200,26 @@ test("Escape during composition is ignored; backdrop dismisses only an outside p
   editor.cleanup();
 });
 
-test("a failed chunk stops sending, retains text and does not retry automatically", () => {
+test("a failed send retains the text and does not retry automatically", () => {
   const commands = [];
   const { controls, editor } = createEditor(undefined, (command) => {
     commands.push(command);
-    return commands.length < 2;
+    return false;
   });
   emit(controls.buttonElement, "click");
   const text = "😀".repeat(2500);
   edit(controls, text);
   emit(controls.sendButton, "click");
-  assert.equal(commands.length, 2);
+  assert.equal(commands.length, 1);
   assert.equal(controls.draft.text, text);
   assert.equal(controls.inputElement.value, text);
   assert.equal(controls.errorElement.hidden, false);
-  assert.match(controls.errorElement.textContent, /partially sent/);
+  assert.match(controls.errorElement.textContent, /could not be sent/);
   assert.equal(editor.isActive(), true);
   editor.cleanup();
 });
 
-test("synchronous disconnect during sending keeps the draft and stops remaining commands", () => {
+test("synchronous disconnect during sending keeps the draft", () => {
   const commands = [];
   let disconnect;
   const { controls, editor } = createEditor(undefined, (command) => {
@@ -266,7 +235,7 @@ test("synchronous disconnect during sending keeps the draft and stops remaining 
   assert.equal(controls.draft.text, "😀".repeat(2500));
   assert.equal(editor.isActive(), false);
   assert.equal(controls.buttonElement.disabled, true);
-  assert.match(controls.draft.error, /partially sent/);
+  assert.match(controls.draft.error, /could not be sent/);
 });
 
 test("a later host error offers the last text without replacing a new draft", () => {

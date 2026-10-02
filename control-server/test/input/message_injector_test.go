@@ -2,6 +2,7 @@ package input_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -67,6 +68,7 @@ func TestMessageInjectorIgnoresInputItCannotDeliver(t *testing.T) {
 // recordingKeys is an input.Keys that records how each key was delivered.
 type recordingKeys struct {
 	foreground bool
+	activate   error
 	calls      []string
 }
 
@@ -82,8 +84,18 @@ func (r *recordingKeys) Send(vk uint16, up bool) error {
 
 func (r *recordingKeys) Foreground(win32.HWND) bool { return r.foreground }
 
+func (r *recordingKeys) Activate(win32.HWND) error {
+	r.calls = append(r.calls, "activate")
+	return r.activate
+}
+
+func (r *recordingKeys) SetClipboard(text string) error {
+	r.calls = append(r.calls, fmt.Sprintf("clipboard %q", text))
+	return nil
+}
+
 func keyEvent(vk uint16, up bool) string {
-	name := map[uint16]string{win32.VKShift: "shift", 0x0D: "enter"}[vk]
+	name := map[uint16]string{win32.VKShift: "shift", win32.VKControl: "ctrl", win32.VKV: "v", 0x0D: "enter"}[vk]
 	if up {
 		return name + " up"
 	}
@@ -168,6 +180,36 @@ func TestRealShiftIsReleasedAfterTheTargetIsGone(t *testing.T) {
 	}
 	want := []string{"send shift down", "send shift up"}
 	if !slices.Equal(keys.calls, want) {
+		t.Fatalf("calls = %v, want %v", keys.calls, want)
+	}
+}
+
+// Text goes through the clipboard and a real Ctrl+V, so it reaches the
+// application in one piece and in order with other real input, never through
+// its input method.
+func TestTextIsPastedFromTheClipboardWithRealCtrlV(t *testing.T) {
+	keys := &recordingKeys{}
+	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, keys)
+	if err := m.Text("日本語\nline 2\r\nline 3"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"activate", `clipboard "日本語\r\nline 2\r\nline 3"`,
+		"send ctrl down", "send v down", "send v up", "send ctrl up",
+	}
+	if !slices.Equal(keys.calls, want) {
+		t.Fatalf("calls = %v, want %v", keys.calls, want)
+	}
+}
+
+func TestTextIsNotSentWhenTheTargetCannotBeActivated(t *testing.T) {
+	denied := errors.New("denied")
+	keys := &recordingKeys{activate: denied}
+	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, keys)
+	if err := m.Text("hello"); !errors.Is(err, denied) {
+		t.Fatalf("Text = %v, want %v", err, denied)
+	}
+	if want := []string{"activate"}; !slices.Equal(keys.calls, want) {
 		t.Fatalf("calls = %v, want %v", keys.calls, want)
 	}
 }

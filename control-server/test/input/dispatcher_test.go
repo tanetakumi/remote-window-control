@@ -117,7 +117,7 @@ func TestDispatchValidation(t *testing.T) {
 		{"invalid tap button", `{"type":"input.tap","button":"middle"}`},
 		{"empty tap button", `{"type":"input.tap"}`},
 		{"invalid release button", `{"type":"input.mouseUp","button":"middle"}`},
-		{"oversized text", `{"type":"input.text","text":"` + strings.Repeat("a", 4097) + `"}`},
+		{"oversized text", `{"type":"input.text","text":"` + strings.Repeat("a", 16*1024+1) + `"}`},
 		{"oversized message", `{"type":"input.text","text":"` + strings.Repeat("a", input.MaxMessageBytes) + `"}`},
 	}
 	for _, tt := range tests {
@@ -135,7 +135,7 @@ func TestDispatchValidation(t *testing.T) {
 
 func TestTextAtTheLimitIsAccepted(t *testing.T) {
 	d, _ := activeDispatcher()
-	mustDispatch(t, d, `{"type":"input.text","text":"`+strings.Repeat("a", 4096)+`"}`)
+	mustDispatch(t, d, `{"type":"input.text","text":"`+strings.Repeat("a", 16*1024)+`"}`)
 }
 
 func TestHeldInputIsBounded(t *testing.T) {

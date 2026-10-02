@@ -9,7 +9,7 @@ This repository is a substantially modified fork of [Share App - Remote Window C
 - Stream one selected application window instead of the entire desktop.
 - Control it from a mobile browser with touch gestures.
 - Choose between a relative pointer and direct tapping.
-- Send text from the built-in text editor and use the special-key palette.
+- Send text from the built-in text editor (up to 16 KiB per send) and use the special-key palette. The host pastes the text: it replaces its own clipboard with it and presses Ctrl+V in the target window, which is brought to the foreground first.
 - Keep the session display alive with a loopback RDP connection, so capture continues after a remote viewer disconnects.
 - Connect with WebRTC; no separate mobile app is required.
 
@@ -78,15 +78,14 @@ The optional `.env` file sits beside `share-host.exe`. Environment variables ove
 
 ### Settings page
 
-The gear button next to **Refresh** in the web UI opens a settings page with three options, shared by every device that connects:
+The gear button next to **Refresh** in the web UI opens a settings page with two options, shared by every device that connects:
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| Line break in text input | `Enter` | Whether each line break of the text input dialog is sent as Enter or Shift+Enter. Applies the next time a window is opened. |
 | Video FPS | `8` | Video encode rate in frames per second while the window changes, 1 to 30. Applies from the next connection. |
 | Video quality (CRF) | `31` | VP9 constant rate factor, 0 to 63. Lower is sharper and uses more bandwidth; the `6M` bitrate cap stays fixed. Applies from the next connection. |
 
-**Save** writes them to `config.json` beside `share-host.exe` (the repository root in a checkout), for example `{"fps": 8, "crf": 31, "newline": "enter"}` with `newline` being `"enter"` or `"shift-enter"`. The file is optional; the host fails to start if it exists but is malformed or out of range.
+**Save** writes them to `config.json` beside `share-host.exe` (the repository root in a checkout), for example `{"fps": 8, "crf": 31}`. The file is optional; the host fails to start if it exists but is malformed or out of range.
 
 A disconnected media connection gets a 5-second grace period to recover. Input commands are buffered while the send buffer is full; a backlog lasting 5 seconds or exceeding 256 queued commands ends the connection to avoid applying stale input.
 

@@ -1,25 +1,8 @@
 import { createListenerTracker } from "../lib/events.js";
 
-// 1024 Unicode code points fit the host's 4096-byte text limit, including emoji.
-function* textCommands(text, shiftNewline) {
-  const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  for (const [index, line] of lines.entries()) {
-    if (index) {
-      if (shiftNewline) yield { type: "input.keyDown", key: "Shift" };
-      yield { type: "input.keyDown", key: "Enter" };
-      yield { type: "input.keyUp", key: "Enter" };
-      if (shiftNewline) yield { type: "input.keyUp", key: "Shift" };
-    }
-    const chars = Array.from(line);
-    for (let offset = 0; offset < chars.length; offset += 1024) {
-      yield { type: "input.text", text: chars.slice(offset, offset + 1024).join("") };
-    }
-  }
-}
-
 export function attachTextInput({
   buttonElement, dialogElement, inputElement, closeButton, sendButton,
-  restoreButton, errorElement, draft, shiftNewline, onOpenChange,
+  restoreButton, errorElement, draft, onOpenChange,
 }, sendControl) {
   const { listen, cleanup: removeListeners } = createListenerTracker();
   let active = false;
@@ -129,11 +112,10 @@ export function attachTextInput({
     draft.error = "";
     syncUi();
     try {
-      for (const command of textCommands(draft.text, shiftNewline)) {
-        if (disposed || !sendControl(command)) {
-          reportError("Text may have been partially sent. Check the remote window before retrying.");
-          return;
-        }
+      // The host pastes the whole text at once, line breaks included.
+      if (!sendControl({ type: "input.text", text: draft.text })) {
+        reportError("Text could not be sent.");
+        return;
       }
       if (disposed) return;
       inputElement.value = draft.text = "";

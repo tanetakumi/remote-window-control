@@ -13,7 +13,7 @@ const (
 
 	maxHeldButtons = 2
 	maxHeldKeys    = 32
-	maxTextBytes   = 4096
+	maxTextBytes   = 16 * 1024
 )
 
 var (

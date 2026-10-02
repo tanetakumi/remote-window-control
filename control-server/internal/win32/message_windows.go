@@ -1,11 +1,8 @@
 package win32
 
-import "unicode/utf16"
-
 const (
 	wmKeyDown    = 0x0100
 	wmKeyUp      = 0x0101
-	wmChar       = 0x0102
 	wmMouseMove  = 0x0200
 	wmMouseWheel = 0x020A
 )
@@ -55,16 +52,4 @@ func SendMouseWheel(hwnd HWND, delta, clientX, clientY int32) error {
 	}
 	wParam := uintptr(uint32(int16(delta)) << 16)
 	return sendMessage(hwnd, wmMouseWheel, wParam, makeLParam(screenX, screenY))
-}
-
-// PostText types text into the window one UTF-16 unit at a time. The units are
-// posted, like PostKey's messages, so text and keys reach the window in the
-// order they were sent.
-func PostText(hwnd HWND, text string) error {
-	for _, unit := range utf16.Encode([]rune(text)) {
-		if err := postMessage(hwnd, wmChar, uintptr(unit), 0); err != nil {
-			return err
-		}
-	}
-	return nil
 }
