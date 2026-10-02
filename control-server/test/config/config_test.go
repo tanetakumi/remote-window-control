@@ -69,7 +69,7 @@ func TestDevelopmentCheckoutDefaults(t *testing.T) {
 		ProbePath:    filepath.Join(root, "CaptureProbe", "CaptureProbe.exe"),
 		FFmpegPath:   "ffmpeg",
 		CaptureStats: config.CaptureStatsOff,
-		FPS:          8,
+		SettingsPath: filepath.Join(root, "config.json"),
 	}
 	if cfg != want {
 		t.Fatalf("got  %+v\nwant %+v", cfg, want)
@@ -284,27 +284,6 @@ func TestEnvFileWithRemovedCaptureSettingsIsRejected(t *testing.T) {
 		writeEnvFile(t, root, "SHARE_APP_ADDR=127.0.0.1:9000\n"+line+"\n")
 		if _, err := config.LoadFrom(env(exeDir, root, nil)); err == nil || !strings.Contains(err.Error(), "line 2") {
 			t.Fatalf("%s: error = %v, want one pointing at line 2", line, err)
-		}
-	}
-}
-
-func TestFPSSetting(t *testing.T) {
-	root, exeDir := checkout(t)
-	load := func(vars map[string]string) (config.Config, error) {
-		return config.LoadFrom(env(exeDir, root, vars))
-	}
-
-	writeEnvFile(t, root, "SHARE_APP_FPS=12\n")
-	cfg, err := load(nil)
-	if err != nil || cfg.FPS != 12 {
-		t.Fatalf("env file: fps=%d err=%v", cfg.FPS, err)
-	}
-	if cfg, err = load(map[string]string{"SHARE_APP_FPS": "30"}); err != nil || cfg.FPS != 30 {
-		t.Fatalf("environment override: fps=%d err=%v", cfg.FPS, err)
-	}
-	for _, bad := range []string{"0", "31", "-1", "abc", "7.5"} {
-		if _, err := load(map[string]string{"SHARE_APP_FPS": bad}); err == nil || !strings.Contains(err.Error(), "SHARE_APP_FPS") {
-			t.Fatalf("%q: err=%v", bad, err)
 		}
 	}
 }

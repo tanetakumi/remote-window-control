@@ -34,12 +34,11 @@ globalThis.window = Object.assign(new EventTarget(), {
 });
 window.location = { protocol: "http:", host: "host:8443" };
 
-function createEditor(draft = { text: "", lastSent: "", error: "" }, sendControl) {
+function createEditor(draft = { text: "", lastSent: "", error: "" }, sendControl, shiftNewline = false) {
   const controls = {
     buttonElement: new Element(), dialogElement: new Element(), inputElement: new Element(),
     closeButton: new Element(), sendButton: new Element(), restoreButton: new Element(),
-    enterButton: new Element(), shiftEnterButton: new Element(),
-    errorElement: new Element(), draft,
+    errorElement: new Element(), draft, shiftNewline,
   };
   const sent = [];
   const editor = attachTextInput(controls, sendControl ?? ((command) => { sent.push(command); return true; }));
@@ -122,11 +121,8 @@ test("newlines are ordered between text chunks without appending an extra Enter"
 });
 
 test("Shift newline mode wraps each line break in Shift", () => {
-  const { controls, sent, editor } = createEditor();
+  const { controls, sent, editor } = createEditor(undefined, undefined, true);
   emit(controls.buttonElement, "click");
-  emit(controls.shiftEnterButton, "click");
-  assert.equal(controls.shiftEnterButton.attributes["aria-pressed"], "true");
-  assert.equal(controls.enterButton.attributes["aria-pressed"], "false");
   edit(controls, "a\nb");
   emit(controls.sendButton, "click");
   assert.deepEqual(sent, [
@@ -142,7 +138,7 @@ test("Shift newline mode wraps each line break in Shift", () => {
 test("touch presses on dialog buttons do not steal focus from the textarea", () => {
   const { controls, editor } = createEditor();
   emit(controls.buttonElement, "click");
-  for (const name of ["enterButton", "shiftEnterButton", "sendButton", "restoreButton", "closeButton"]) {
+  for (const name of ["sendButton", "restoreButton", "closeButton"]) {
     const event = new Event("pointerdown", { cancelable: true });
     Object.assign(event, { pointerType: "touch", isPrimary: true, button: 0 });
     controls[name].dispatchEvent(event);

@@ -33,12 +33,54 @@
                 </svg>
                 <span>Refresh</span>
               </button>
+              <button id="settings-button" type="button" aria-label="Open settings" title="Settings">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
             </div>
           </header>
 
           <p id="select-status" role="status" aria-live="polite"></p>
 
           <div id="window-list" role="region" aria-label="Available windows"></div>
+        </div>
+      </main>
+
+      <!-- Settings Screen -->
+      <main id="settings-screen" hidden>
+        <div class="select-container">
+          <header class="select-header">
+            <h1 class="brand-title">Settings</h1>
+            <div class="header-actions">
+              <button id="settings-back" type="button" aria-label="Back to applications">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7M5 12h14"/></svg>
+                <span>Back</span>
+              </button>
+            </div>
+          </header>
+
+          <p id="settings-status" role="status" aria-live="polite"></p>
+
+          <div class="settings-field" role="group" aria-labelledby="settings-newline-label">
+            <span id="settings-newline-label">Line break in text input</span>
+            <div class="segmented">
+              <button id="settings-newline-enter" type="button" aria-pressed="true">Enter</button>
+              <button id="settings-newline-shift-enter" type="button" aria-pressed="false">Shift+Enter</button>
+            </div>
+          </div>
+          <div class="settings-field settings-slider">
+            <label for="settings-fps">Video FPS</label>
+            <output id="settings-fps-value" for="settings-fps"></output>
+            <input id="settings-fps" type="range" min="1" max="30" step="1" />
+          </div>
+          <div class="settings-field settings-slider">
+            <label for="settings-crf">Video quality CRF (lower is sharper)</label>
+            <output id="settings-crf-value" for="settings-crf"></output>
+            <input id="settings-crf" type="range" min="0" max="63" step="1" />
+          </div>
+          <button id="settings-save" type="button" disabled>Save</button>
         </div>
       </main>
 
@@ -142,10 +184,6 @@
           <p id="text-input-error" role="status" hidden></p>
           <div class="text-dialog-actions">
             <button id="restore-text-input" type="button" hidden>Restore last text</button>
-            <div class="segmented" role="group" aria-label="Line break sent as">
-              <button id="newline-enter" type="button" aria-pressed="true" title="Send line breaks as Enter">Enter</button>
-              <button id="newline-shift-enter" type="button" aria-pressed="false" title="Send line breaks as Shift+Enter">Shift+Enter</button>
-            </div>
             <button id="send-text-input" type="button" disabled>Send</button>
           </div>
         </dialog>

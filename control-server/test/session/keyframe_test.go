@@ -72,7 +72,7 @@ func testBrowserKeyframeRecovery(t *testing.T, feedback string) {
 			return &staticStream{closed: make(chan struct{})}, nil
 		},
 		Target:  fixedTarget{},
-		Encoder: media.DefaultEncoderConfig("ffmpeg"),
+		Encoder: func() media.EncoderConfig { return media.DefaultEncoderConfig("ffmpeg") },
 	})
 	server := httptest.NewServer(hub)
 	t.Cleanup(server.Close)

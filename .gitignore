@@ -4,6 +4,9 @@ Thumbs.db
 # Local env (secrets, paths)
 .env
 
+# Settings saved from the web UI
+/config.json
+
 # Local certificates and keys
 *.crt
 *.key

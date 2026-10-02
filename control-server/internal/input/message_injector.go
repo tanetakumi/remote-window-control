@@ -8,25 +8,59 @@ import (
 	"share-app-host/internal/window"
 )
 
-// tapHold is how long a tap keeps the button down before releasing it.
-const tapHold = 25 * time.Millisecond
+const (
+	// tapHold is how long a tap keeps the button down before releasing it.
+	tapHold = 25 * time.Millisecond
+	// inputDrain is how long the injector waits after the last key sent as
+	// real input. A window receives posted messages ahead of input from the
+	// system, so text posted straight afterwards could overtake those keys.
+	inputDrain = 30 * time.Millisecond
+)
 
 // TargetSource reports the handle of the window that should receive input.
 type TargetSource interface {
 	CurrentHandle() (uint64, bool)
 }
 
+// Keys delivers key presses to a window. Posted keys reach it without focus;
+// sent keys go through the system input stream to the foreground window.
+type Keys interface {
+	// Post posts a key message to hwnd.
+	Post(hwnd win32.HWND, vk uint16, up bool) error
+	// Send injects a key into the system input stream.
+	Send(vk uint16, up bool) error
+	// Foreground reports whether hwnd is the active window.
+	Foreground(hwnd win32.HWND) bool
+}
+
+type win32Keys struct{}
+
+func (win32Keys) Post(hwnd win32.HWND, vk uint16, up bool) error { return win32.PostKey(hwnd, vk, up) }
+func (win32Keys) Send(vk uint16, up bool) error                  { return win32.SendKey(vk, up) }
+func (win32Keys) Foreground(hwnd win32.HWND) bool                { return win32.IsForeground(hwnd) }
+
 // MessageInjector is an Injector that posts window messages straight to the
-// target window, so input needs neither focus nor the physical cursor.
+// target window, so input needs neither focus nor the physical cursor. The one
+// exception is Shift: applications read it from the system key state, which
+// posted messages cannot change, so a Shift press on a foreground target is
+// sent as real input, and every key until its release follows it there to stay
+// in order.
 type MessageInjector struct {
-	target  TargetSource
-	buttons win32.Buttons // buttons currently held, reported with pointer moves
+	target   TargetSource
+	keys     Keys
+	buttons  win32.Buttons // buttons currently held, reported with pointer moves
+	realKeys bool          // keys are being sent as real input until Shift is released
 }
 
 // NewMessageInjector returns an injector that resolves the target window on
 // every call, so it follows target changes.
 func NewMessageInjector(target TargetSource) *MessageInjector {
-	return &MessageInjector{target: target}
+	return NewMessageInjectorWithKeys(target, win32Keys{})
+}
+
+// NewMessageInjectorWithKeys is NewMessageInjector with a custom key delivery.
+func NewMessageInjectorWithKeys(target TargetSource, keys Keys) *MessageInjector {
+	return &MessageInjector{target: target, keys: keys}
 }
 
 func (m *MessageInjector) Move(x, y float64) error {
@@ -119,18 +153,32 @@ func (m *MessageInjector) KeyDown(c Command) error { return m.key(c, false) }
 
 func (m *MessageInjector) KeyUp(c Command) error { return m.key(c, true) }
 
-// key posts non-printable keys. Printable characters arrive as Text, so any
-// other key is ignored.
+// key delivers non-printable keys, posted unless Shift made them real input.
+// Printable characters arrive as Text, so any other key is ignored.
 func (m *MessageInjector) key(c Command, up bool) error {
 	vk, ok := win32.VirtualKey(c.Key)
 	if !ok {
 		return nil
 	}
-	hwnd, err := m.handle()
-	if err != nil {
-		return err
+	// Real input needs no target, so a held Shift is released even after the
+	// target window is gone.
+	if !m.realKeys {
+		hwnd, err := m.handle()
+		if err != nil {
+			return err
+		}
+		if vk != win32.VKShift || up || !m.keys.Foreground(hwnd) {
+			return m.keys.Post(hwnd, vk, up)
+		}
 	}
-	return win32.PostKey(hwnd, vk, up)
+	err := m.keys.Send(vk, up)
+	if vk == win32.VKShift {
+		m.realKeys = !up && err == nil
+		if up {
+			time.Sleep(inputDrain)
+		}
+	}
+	return err
 }
 
 func (m *MessageInjector) Text(text string) error {
@@ -138,7 +186,7 @@ func (m *MessageInjector) Text(text string) error {
 	if err != nil {
 		return err
 	}
-	return win32.SendText(hwnd, text)
+	return win32.PostText(hwnd, text)
 }
 
 // handle returns the selected window, or window.ErrNotSelected.

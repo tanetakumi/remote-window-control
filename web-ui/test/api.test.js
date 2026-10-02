@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchWindows, setTargetWindow, fetchKeepalive, setKeepalive } from "../src/core/api.js";
+import {
+  fetchWindows, setTargetWindow, fetchKeepalive, setKeepalive, fetchSettings, saveSettings,
+} from "../src/core/api.js";
 
 test("window APIs work without application credentials", async (t) => {
   const target = { handle: 123, title: "Test window" };
@@ -61,4 +63,38 @@ test("window loading preserves helper diagnostics and falls back on empty errors
 
   t.mock.method(globalThis, "fetch", async () => new Response("", { status: 502 }));
   await assert.rejects(fetchWindows(), /Could not load windows/);
+});
+
+test("settings are read and saved as JSON", async (t) => {
+  const settings = { fps: 12, crf: 24, newline: "shift-enter" };
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    calls.push({ url, options });
+    return Response.json(settings);
+  });
+
+  assert.deepEqual(await fetchSettings(), settings);
+  assert.deepEqual(await saveSettings(settings), settings);
+  assert.deepEqual(calls, [
+    { url: "/api/settings", options: undefined },
+    {
+      url: "/api/settings",
+      options: {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      },
+    },
+  ]);
+});
+
+test("settings errors carry the host message", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response("invalid settings: fps must be an integer from 1 to 30\n", { status: 400 }),
+  );
+  await assert.rejects(saveSettings({ fps: 99, crf: 31, newline: "enter" }), /fps must be an integer/);
+
+  t.mock.method(globalThis, "fetch", async () => new Response("", { status: 500 }));
+  await assert.rejects(fetchSettings(), /Could not load the settings/);
+  await assert.rejects(saveSettings({ fps: 8, crf: 31, newline: "enter" }), /Could not save the settings/);
 });

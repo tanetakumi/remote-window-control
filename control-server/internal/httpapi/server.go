@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"share-app-host/internal/config"
 	"share-app-host/internal/rdpkeep"
 	"share-app-host/internal/window"
 )
@@ -40,6 +41,12 @@ type Keepalive interface {
 	SetEnabled(enabled bool) (rdpkeep.Status, error)
 }
 
+// Settings reads and persists the host settings edited in the web client.
+type Settings interface {
+	Get() config.Settings
+	Set(config.Settings) error
+}
+
 // Options configure a Server.
 type Options struct {
 	// Addr is the listen address.
@@ -53,6 +60,8 @@ type Options struct {
 	Control http.Handler
 	// Keepalive serves the session keep-alive endpoints. It may be nil.
 	Keepalive Keepalive
+	// Settings serves the settings endpoints. It may be nil.
+	Settings Settings
 }
 
 // Server is the host's HTTP server.
@@ -63,6 +72,7 @@ type Server struct {
 	windows   Windows
 	snapshots Snapshotter
 	keepalive Keepalive
+	settings  Settings
 
 	snapshotMu sync.Mutex // one snapshot helper at a time
 }
@@ -74,6 +84,7 @@ func New(opts Options) *Server {
 		windows:   opts.Windows,
 		snapshots: opts.Snapshots,
 		keepalive: opts.Keepalive,
+		settings:  opts.Settings,
 	}
 	control := opts.Control
 	if control == nil {
@@ -87,6 +98,10 @@ func New(opts Options) *Server {
 	if s.keepalive != nil {
 		mux.HandleFunc("GET /api/session-keepalive", s.handleKeepaliveStatus)
 		mux.HandleFunc("POST /api/session-keepalive", s.handleKeepaliveSet)
+	}
+	if s.settings != nil {
+		mux.HandleFunc("GET /api/settings", s.handleSettingsGet)
+		mux.HandleFunc("PUT /api/settings", s.handleSettingsPut)
 	}
 	mux.Handle("/ws", control)
 	mux.HandleFunc("/", s.handleStatic)

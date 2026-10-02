@@ -13,7 +13,6 @@ import (
 var knownKeys = map[string]bool{
 	envAddr:         true,
 	envCaptureStats: true,
-	envFPS:          true,
 	envRDPUsername:  true,
 	envRDPPassword:  true,
 }

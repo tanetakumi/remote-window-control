@@ -47,7 +47,7 @@ func newFixtureWith(t *testing.T, opts session.Options) *fixture {
 		return nil, errors.New("no capture in tests")
 	}
 	opts.Target = noTarget{}
-	opts.Encoder = media.DefaultEncoderConfig("ffmpeg")
+	opts.Encoder = func() media.EncoderConfig { return media.DefaultEncoderConfig("ffmpeg") }
 	hub := session.NewHub(opts)
 	server := httptest.NewServer(hub)
 	t.Cleanup(server.Close) // runs after hub.Close

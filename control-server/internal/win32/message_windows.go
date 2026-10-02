@@ -1,10 +1,6 @@
 package win32
 
-import (
-	"errors"
-	"time"
-	"unicode/utf16"
-)
+import "unicode/utf16"
 
 const (
 	wmKeyDown    = 0x0100
@@ -12,9 +8,6 @@ const (
 	wmChar       = 0x0102
 	wmMouseMove  = 0x0200
 	wmMouseWheel = 0x020A
-
-	// textDeadline bounds how long typing one string may take in total.
-	textDeadline = 2 * time.Second
 )
 
 // Mouse button messages in (down, up) order, indexed by Button.
@@ -23,14 +16,17 @@ var buttonMessages = [...][2]uint32{
 	ButtonRight: {0x0204, 0x0205}, // WM_RBUTTONDOWN, WM_RBUTTONUP
 }
 
-var errTextTimeout = errors.New("text input timed out")
-
-// PostKey posts a key press or release for a virtual-key code.
+// PostKey posts a key press or release for a virtual-key code, with the scan
+// code and extended-key bit a physical key press would carry.
 func PostKey(hwnd HWND, vk uint16, up bool) error {
-	if up {
-		return postMessage(hwnd, wmKeyUp, uintptr(vk), 0xC0000001)
+	lParam := uintptr(1) | uintptr(scanCode(vk))<<16
+	if IsExtendedKey(vk) {
+		lParam |= 1 << 24
 	}
-	return postMessage(hwnd, wmKeyDown, uintptr(vk), 1)
+	if up {
+		return postMessage(hwnd, wmKeyUp, uintptr(vk), lParam|0xC0000000)
+	}
+	return postMessage(hwnd, wmKeyDown, uintptr(vk), lParam)
 }
 
 // PostMouseMove posts a pointer move to client coordinates, reporting the
@@ -61,14 +57,12 @@ func SendMouseWheel(hwnd HWND, delta, clientX, clientY int32) error {
 	return sendMessage(hwnd, wmMouseWheel, wParam, makeLParam(screenX, screenY))
 }
 
-// SendText types text into the window one UTF-16 unit at a time.
-func SendText(hwnd HWND, text string) error {
-	deadline := time.Now().Add(textDeadline)
+// PostText types text into the window one UTF-16 unit at a time. The units are
+// posted, like PostKey's messages, so text and keys reach the window in the
+// order they were sent.
+func PostText(hwnd HWND, text string) error {
 	for _, unit := range utf16.Encode([]rune(text)) {
-		if time.Now().After(deadline) {
-			return errTextTimeout
-		}
-		if err := sendMessage(hwnd, wmChar, uintptr(unit), 0); err != nil {
+		if err := postMessage(hwnd, wmChar, uintptr(unit), 0); err != nil {
 			return err
 		}
 	}

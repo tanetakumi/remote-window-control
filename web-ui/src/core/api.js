@@ -29,3 +29,19 @@ export async function setKeepalive(enabled) {
   if (!res.ok) throw new Error((await res.text()).trim() || "Could not toggle the session keep-alive");
   return res.json();
 }
+
+export async function fetchSettings() {
+  const res = await fetch("/api/settings");
+  if (!res.ok) throw new Error((await res.text()).trim() || "Could not load the settings");
+  return res.json();
+}
+
+export async function saveSettings(settings) {
+  const res = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error((await res.text()).trim() || "Could not save the settings");
+  return res.json();
+}

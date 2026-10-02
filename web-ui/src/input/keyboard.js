@@ -19,7 +19,7 @@ function* textCommands(text, shiftNewline) {
 
 export function attachTextInput({
   buttonElement, dialogElement, inputElement, closeButton, sendButton,
-  restoreButton, enterButton, shiftEnterButton, errorElement, draft, onOpenChange,
+  restoreButton, errorElement, draft, shiftNewline, onOpenChange,
 }, sendControl) {
   const { listen, cleanup: removeListeners } = createListenerTracker();
   let active = false;
@@ -35,8 +35,6 @@ export function attachTextInput({
     sendButton.disabled = disposed || !active || composing || sending || inputElement.value.length === 0;
     if (errorElement.textContent !== draft.error) errorElement.textContent = draft.error;
     errorElement.hidden = !draft.error;
-    enterButton.setAttribute("aria-pressed", String(!draft.shiftNewline));
-    shiftEnterButton.setAttribute("aria-pressed", String(!!draft.shiftNewline));
     restoreButton.hidden = !draft.error || !draft.lastSent || inputElement.value.length > 0;
   };
   const positionDialog = () => {
@@ -86,7 +84,7 @@ export function attachTextInput({
       event.preventDefault();
     }
   };
-  for (const button of [closeButton, enterButton, shiftEnterButton, sendButton, restoreButton]) {
+  for (const button of [closeButton, sendButton, restoreButton]) {
     listen(button, "pointerdown", keepFocus);
   }
   listen(closeButton, "click", close);
@@ -119,12 +117,6 @@ export function attachTextInput({
     draft.text = inputElement.value;
     syncUi();
   });
-  for (const [button, shift] of [[enterButton, false], [shiftEnterButton, true]]) {
-    listen(button, "click", () => {
-      draft.shiftNewline = shift;
-      syncUi();
-    });
-  }
   listen(restoreButton, "click", () => {
     inputElement.value = draft.text = draft.lastSent;
     syncUi();
@@ -137,7 +129,7 @@ export function attachTextInput({
     draft.error = "";
     syncUi();
     try {
-      for (const command of textCommands(draft.text, draft.shiftNewline)) {
+      for (const command of textCommands(draft.text, shiftNewline)) {
         if (disposed || !sendControl(command)) {
           reportError("Text may have been partially sent. Check the remote window before retrying.");
           return;

@@ -116,7 +116,8 @@ body {
 }
 
 /* Window Selection Screen */
-#select-screen {
+#select-screen,
+#settings-screen {
   grid-column: 1 / -1;
   grid-row: 1 / -1;
   display: flex;
@@ -128,7 +129,8 @@ body {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
 }
 
-#select-screen[hidden] {
+#select-screen[hidden],
+#settings-screen[hidden] {
   display: none !important;
 }
 
@@ -165,7 +167,9 @@ body {
 }
 
 #refresh-button,
-#keepalive-button {
+#keepalive-button,
+#settings-button,
+#settings-back {
   min-height: 44px;
   flex-shrink: 0;
   display: inline-flex;
@@ -186,18 +190,24 @@ body {
 }
 
 #refresh-button:hover,
-#keepalive-button:hover {
+#keepalive-button:hover,
+#settings-button:hover,
+#settings-back:hover {
   background: var(--bg-surface-elevated);
   border-color: var(--border-hover);
 }
 
 #refresh-button:active,
-#keepalive-button:active {
+#keepalive-button:active,
+#settings-button:active,
+#settings-back:active {
   transform: scale(0.97);
 }
 
 #refresh-button:focus-visible,
-#keepalive-button:focus-visible {
+#keepalive-button:focus-visible,
+#settings-button:focus-visible,
+#settings-back:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
@@ -239,8 +249,105 @@ body {
   to { transform: rotate(360deg); }
 }
 
+#settings-button {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+}
+
+#settings-button svg,
+#settings-back svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Settings Screen */
+.settings-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+}
+
+.segmented {
+  display: inline-flex;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.segmented button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border-subtle);
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.segmented button + button {
+  border-left: 0;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--color-primary);
+  border-color: rgba(99, 102, 241, 0.8);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.settings-slider label {
+  flex: 1;
+}
+
+.settings-slider output {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-slider input[type="range"] {
+  flex-basis: 100%;
+  min-height: 44px;
+  accent-color: var(--color-primary);
+  touch-action: pan-y;
+}
+
+.settings-slider input[type="range"]:focus-visible,
+.segmented button:focus-visible,
+#settings-save:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+#settings-save {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#settings-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Status message */
-#select-status {
+#select-status,
+#settings-status {
   overflow-wrap: anywhere;
   color: var(--text-secondary);
   font-size: 0.88rem;
@@ -249,11 +356,13 @@ body {
   padding: 0 4px;
 }
 
-#select-status:empty {
+#select-status:empty,
+#settings-status:empty {
   display: none;
 }
 
-#select-status.has-error {
+#select-status.has-error,
+#settings-status.has-error {
   color: var(--color-rose);
   background: rgba(244, 63, 94, 0.1);
   border: 1px solid rgba(244, 63, 94, 0.25);
@@ -929,30 +1038,6 @@ body {
   font: inherit;
   font-size: 0.85rem;
   touch-action: manipulation;
-}
-
-.segmented {
-  display: inline-flex;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-#text-dialog .segmented button {
-  min-height: 36px;
-  border-radius: 0;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-#text-dialog .segmented button + button {
-  border-left: 0;
-}
-
-#text-dialog .segmented button[aria-pressed="true"] {
-  background: var(--color-primary);
-  border-color: rgba(99, 102, 241, 0.8);
-  color: var(--text-primary);
-  font-weight: 600;
 }
 
 .text-dialog-actions {

@@ -3,29 +3,32 @@
 //
 // Settings come from environment variables, then an optional .env file, then
 // defaults. The .env file is plain data (KEY=VALUE), never evaluated as shell.
+// The values edited in the web client live in config.json instead (Settings).
 package config
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-
-	"share-app-host/internal/media"
 )
 
 const (
 	envAddr         = "SHARE_APP_ADDR"
 	envCaptureStats = "SHARE_APP_CAPTURE_STATS"
-	envFPS          = "SHARE_APP_FPS"
 
 	envRDPUsername = "SHARE_APP_RDP_USERNAME"
 	envRDPPassword = "SHARE_APP_RDP_PASSWORD"
 
 	defaultAddr = "127.0.0.1:8443"
 
+	// settingsFile holds the Settings edited in the web client.
+	settingsFile = "config.json"
+
 	minFPS = 1
 	maxFPS = 30
+	// minCRF and maxCRF bound the libvpx-vp9 constant rate factor.
+	minCRF = 0
+	maxCRF = 63
 )
 
 // Capture measurement modes (SHARE_APP_CAPTURE_STATS).
@@ -52,8 +55,8 @@ type Config struct {
 	FFmpegPath string
 	// CaptureStats is one of the CaptureStats* modes; off by default.
 	CaptureStats string
-	// FPS is the video encode rate while the window changes, minFPS to maxFPS.
-	FPS int
+	// SettingsPath is the config.json that stores the Settings.
+	SettingsPath string
 	// RDPUsername and RDPPassword are the Windows account (the user running
 	// share-host) the loopback RDP keep-alive signs in with. Both must be
 	// set to enable it.
@@ -111,18 +114,13 @@ func LoadFrom(env Env) (Config, error) {
 		return Config{}, fmt.Errorf("%s must be %s, %s or %s", envCaptureStats, CaptureStatsOff, CaptureStatsOn, CaptureStatsVerify)
 	}
 
-	fps, err := strconv.Atoi(setting(envFPS, strconv.Itoa(media.DefaultFPS)))
-	if err != nil || fps < minFPS || fps > maxFPS {
-		return Config{}, fmt.Errorf("%s must be an integer from %d to %d", envFPS, minFPS, maxFPS)
-	}
-
 	return Config{
 		ListenAddr:   setting(envAddr, defaultAddr),
 		ClientDir:    defaultClientDir(base),
 		ProbePath:    findProbe(base),
 		FFmpegPath:   findFFmpeg(env.ExeDir),
 		CaptureStats: stats,
-		FPS:          fps,
+		SettingsPath: filepath.Join(base, settingsFile),
 		RDPUsername:  setting(envRDPUsername, ""),
 		RDPPassword:  setting(envRDPPassword, ""),
 	}, nil

@@ -49,14 +49,22 @@ func Run(cfg config.Config) error {
 	selection := window.NewSelection(probe)
 	dispatcher := input.NewDispatcher(input.NewMessageInjector(selection))
 
-	encoder := media.DefaultEncoderConfig(cfg.FFmpegPath)
-	encoder.FPS = cfg.FPS
+	settings, err := config.OpenSettings(cfg.SettingsPath)
+	if err != nil {
+		return err
+	}
 
 	hub := session.NewHub(session.Options{
-		Dispatcher:    dispatcher,
-		Source:        PreparingSource(media.ProbeSource(probe), PrepareWindow),
-		Target:        selection,
-		Encoder:       encoder,
+		Dispatcher: dispatcher,
+		Source:     PreparingSource(media.ProbeSource(probe), PrepareWindow),
+		Target:     selection,
+		Encoder: func() media.EncoderConfig {
+			encoder := media.DefaultEncoderConfig(cfg.FFmpegPath)
+			current := settings.Get()
+			encoder.FPS = current.FPS
+			encoder.CRF = current.CRF
+			return encoder
+		},
 		StatsInterval: mediaStats,
 	})
 	defer hub.Close()
@@ -74,6 +82,7 @@ func Run(cfg config.Config) error {
 		Snapshots: probe,
 		Control:   hub,
 		Keepalive: keeper,
+		Settings:  settings,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

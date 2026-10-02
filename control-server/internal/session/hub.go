@@ -30,9 +30,11 @@ type Options struct {
 	// connected and releases held input when the connection ends.
 	Dispatcher *input.Dispatcher
 	// Source, Target and Encoder configure the video each connection streams.
+	// Encoder is called once per connection, so a changed setting applies to
+	// the next one.
 	Source  media.Source
 	Target  media.Target
-	Encoder media.EncoderConfig
+	Encoder func() media.EncoderConfig
 	// StatsInterval, when positive, logs streaming statistics at this
 	// interval and asks the browser to report its own.
 	StatsInterval time.Duration
@@ -109,7 +111,7 @@ func (h *Hub) serve(c *conn) {
 		Logf:          c.logf,
 		Source:        h.opts.Source,
 		Target:        h.opts.Target,
-		Encoder:       h.opts.Encoder,
+		Encoder:       h.opts.Encoder(),
 		StatsInterval: h.opts.StatsInterval,
 		OnICE: func(candidate pion.ICECandidateInit) {
 			c.send(message{Type: typeICE, Candidate: &candidate})

@@ -16,7 +16,7 @@ import (
 const probeBuildDir = "net10.0-windows10.0.26100.0/win-x64"
 
 // resolveBaseDir returns the directory that holds the client, CaptureProbe and
-// the optional .env file.
+// the optional .env and config.json files.
 func resolveBaseDir(env Env) string {
 	for _, marker := range []string{"web", "CaptureProbe"} {
 		if isDir(filepath.Join(env.ExeDir, marker)) {

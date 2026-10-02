@@ -72,10 +72,21 @@ The optional `.env` file sits beside `share-host.exe`. Environment variables ove
 | Setting | Default | Description |
 | --- | --- | --- |
 | `SHARE_APP_ADDR` | `127.0.0.1:8443` | HTTP listen address. HTTPS must be provided by a separate trusted proxy. |
-| `SHARE_APP_FPS` | `8` | Video encode rate in frames per second while the window changes, 1 to 30. |
 | `SHARE_APP_CAPTURE_STATS` | `off` | Capture diagnostics: `off`, `on`, or `verify`. `verify` adds CPU-intensive pixel checks. Any value other than `off` also logs the browser's receive statistics. |
 | `SHARE_APP_RDP_USERNAME` | *(empty)* | Windows account for the RDP session keep-alive. See below. |
 | `SHARE_APP_RDP_PASSWORD` | *(empty)* | Password of the RDP session keep-alive account. Both credentials must be set to enable the feature. |
+
+### Settings page
+
+The gear button next to **Refresh** in the web UI opens a settings page with three options, shared by every device that connects:
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| Line break in text input | `Enter` | Whether each line break of the text input dialog is sent as Enter or Shift+Enter. Applies the next time a window is opened. |
+| Video FPS | `8` | Video encode rate in frames per second while the window changes, 1 to 30. Applies from the next connection. |
+| Video quality (CRF) | `31` | VP9 constant rate factor, 0 to 63. Lower is sharper and uses more bandwidth; the `6M` bitrate cap stays fixed. Applies from the next connection. |
+
+**Save** writes them to `config.json` beside `share-host.exe` (the repository root in a checkout), for example `{"fps": 8, "crf": 31, "newline": "enter"}` with `newline` being `"enter"` or `"shift-enter"`. The file is optional; the host fails to start if it exists but is malformed or out of range.
 
 A disconnected media connection gets a 5-second grace period to recover. Input commands are buffered while the send buffer is full; a backlog lasting 5 seconds or exceeding 256 queued commands ends the connection to avoid applying stale input.
 
@@ -93,7 +104,7 @@ While the keep-alive connection is up, the session display takes the requested 1
 
 ## Video encoding
 
-Video uses VP9 profile 0 at 8 fps by default (`SHARE_APP_FPS`), with low-latency screen encoding, CRF 31 and target bitrate 6M. The target bitrate is not a limit on total network traffic or keyframe bursts. After a pixel change, the encoder runs at full rate for one second, then sends an idle delta frame about once per second. Browser PLI/FIR requests still trigger recovery keyframes.
+Video uses VP9 profile 0 at 8 fps by default (the Video FPS setting), with low-latency screen encoding, CRF 31 (the Video quality setting) and target bitrate 6M. The target bitrate is not a limit on total network traffic or keyframe bursts. After a pixel change, the encoder runs at full rate for one second, then sends an idle delta frame about once per second. Browser PLI/FIR requests still trigger recovery keyframes.
 
 The host logs the offer's codec lines to check browser VP9 support. A browser without VP9 profile 0 receives a connection error; there is no VP8 fallback. Before tuning quality or idle timing, compare static text, typing, menus and scrolling on Windows over a connection limited to about 1 Mbps, using `SHARE_APP_CAPTURE_STATS=on`. Check host CPU, receive statistics and phone heat/battery use.
 

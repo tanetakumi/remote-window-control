@@ -57,3 +57,16 @@ func TestButtons(t *testing.T) {
 		t.Fatal("not empty after releasing everything")
 	}
 }
+
+func TestIsExtendedKey(t *testing.T) {
+	for _, key := range []string{"PageUp", "PageDown", "End", "Home", "ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown", "Delete"} {
+		if vk, _ := win32.VirtualKey(key); !win32.IsExtendedKey(vk) {
+			t.Errorf("%s should be an extended key", key)
+		}
+	}
+	for _, key := range []string{"Backspace", "Tab", "Enter", "Shift", "Escape", " "} {
+		if vk, _ := win32.VirtualKey(key); win32.IsExtendedKey(vk) {
+			t.Errorf("%s should not be an extended key", key)
+		}
+	}
+}

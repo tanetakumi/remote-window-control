@@ -1,13 +1,17 @@
 import "./styles.css";
 
-import { fetchWindows, setTargetWindow, fetchKeepalive, setKeepalive } from "./core/api.js";
+import {
+  fetchWindows, setTargetWindow, fetchKeepalive, setKeepalive, fetchSettings, saveSettings,
+} from "./core/api.js";
 import { createRemoteConnection } from "./core/webrtc.js";
 import { attachTouchControlsUI } from "./input/touch-ui.js";
 import { attachTextInput } from "./input/keyboard.js";
 import { attachSpecialKeysPalette } from "./input/special-keys-palette.js";
+import { attachSettingsScreen } from "./ui/settings-screen.js";
 import { attachViewportSync, getViewportPayload } from "./input/viewport.js";
 
 const selectScreen = document.querySelector("#select-screen");
+const settingsScreen = document.querySelector("#settings-screen");
 const remoteScreen = document.querySelector("#remote-screen");
 const selectStatus = document.querySelector("#select-status");
 const windowList = document.querySelector("#window-list");
@@ -26,6 +30,7 @@ const textInput = document.querySelector("#remote-text-input");
 const noticeElement = document.querySelector("#remote-notice");
 const noticeMessage = document.querySelector("#remote-notice-message");
 const refreshButton = document.querySelector("#refresh-button");
+const settingsButton = document.querySelector("#settings-button");
 const keepaliveButton = document.querySelector("#keepalive-button");
 const keepaliveDot = document.querySelector("#keepalive-dot");
 
@@ -34,7 +39,7 @@ let keepaliveBusy = false;
 let cleanupRemote = () => {};
 let connectionAbort;
 // Keep only the current target's draft in memory, including across reconnects.
-let textDraft = { target: null, text: "", lastSent: "", error: "", shiftNewline: false };
+let textDraft = { target: null, text: "", lastSent: "", error: "" };
 
 function getAppIconSvg() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"></rect><line x1="8" x2="16" y1="21" y2="21"></line><line x1="12" x2="12" y1="17" y2="21"></line></svg>`;
@@ -168,7 +173,7 @@ async function connectToWindow(target) {
   try {
     await setTargetWindow(target.handle);
     if (textDraft.target !== target.handle) {
-      textDraft = { target: target.handle, text: "", lastSent: "", error: "", shiftNewline: false };
+      textDraft = { target: target.handle, text: "", lastSent: "", error: "" };
     }
     selectScreen.hidden = true;
     remoteScreen.hidden = false;
@@ -190,6 +195,7 @@ async function startRemoteControl() {
   keyboardButton.disabled = true;
   specialKeysButton.disabled = true;
   setStatus("connecting", "Connecting…");
+  const { newline } = await fetchSettings();
   let keyboard;
   let viewport;
   const remote = await createRemoteConnection({
@@ -235,10 +241,9 @@ async function startRemoteControl() {
       closeButton: document.querySelector("#close-text-input"),
       sendButton: document.querySelector("#send-text-input"),
       restoreButton: document.querySelector("#restore-text-input"),
-      enterButton: document.querySelector("#newline-enter"),
-      shiftEnterButton: document.querySelector("#newline-shift-enter"),
       errorElement: document.querySelector("#text-input-error"),
       draft: textDraft,
+      shiftNewline: newline === "shift-enter",
       onOpenChange: (active) => {
         specialKeys.setTextInputActive(active);
         viewport?.refresh();
@@ -265,6 +270,7 @@ function returnToWindows(message = "", isError = false) {
   cleanupRemote();
   connectionAbort?.abort();
   selectScreen.hidden = false;
+  settingsScreen.hidden = true;
   remoteScreen.hidden = true;
   setSelectStatus(message, isError);
   setWindowListEnabled(true);
@@ -285,6 +291,29 @@ document.querySelector("#windows-button").addEventListener("click", () => {
 
 refreshButton?.addEventListener("click", () => {
   if (!connecting) showWindowSelect();
+});
+
+const settings = attachSettingsScreen({
+  enterButton: document.querySelector("#settings-newline-enter"),
+  shiftEnterButton: document.querySelector("#settings-newline-shift-enter"),
+  fpsInput: document.querySelector("#settings-fps"),
+  fpsValue: document.querySelector("#settings-fps-value"),
+  crfInput: document.querySelector("#settings-crf"),
+  crfValue: document.querySelector("#settings-crf-value"),
+  saveButton: document.querySelector("#settings-save"),
+  statusElement: document.querySelector("#settings-status"),
+}, { load: fetchSettings, save: saveSettings });
+
+settingsButton.addEventListener("click", () => {
+  if (connecting) return;
+  selectScreen.hidden = true;
+  settingsScreen.hidden = false;
+  settings.open();
+});
+
+document.querySelector("#settings-back").addEventListener("click", () => {
+  settingsScreen.hidden = true;
+  selectScreen.hidden = false;
 });
 
 function renderKeepalive(status) {
