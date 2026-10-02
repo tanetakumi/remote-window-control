@@ -102,7 +102,7 @@ When using an extracted distribution ZIP, install the .NET 10 x64 runtime and pr
 .\share-host.exe
 ```
 
-The default is HTTP on `127.0.0.1:8443`, listening on loopback only. Open `http://127.0.0.1:8443/` on Windows, or the externally configured HTTPS URL on the phone. Select a window to start control. A minimized window is restored without activating it, because capture delivers no frames for it; the viewport size is sent as soon as the control channel opens. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
+The default is HTTP on `127.0.0.1:8443`, listening on loopback only. Open `http://127.0.0.1:8443/` on Windows, or the externally configured HTTPS URL on the phone. Select a window to start control. Before each capture starts (including target switches and reconnection), the host restores a minimized target and activates it in the foreground, because Chromium applications can stop rendering while covered. This happens once per capture, without keeping the window always on top or repeatedly taking focus. If Windows denies activation, the host logs the failure and still attempts capture; activate the target on the host PC if rendering stops. The viewport size is sent as soon as the control channel opens. The connection is ready after WebRTC connects and the browser receives decoded video. Use the window button to disconnect and select another window. Backgrounding the page closes the connection; select a window again on return.
 
 The host also writes its log to `logs/share-host.log` beside `share-host.exe`, whatever the working directory. It is appended across restarts, uses UTC timestamps, and rotates at 5 MiB keeping `.1` and `.2`. It records startup and configuration, window selection, each connection (WebRTC state, control channel, capture start/stop, first captured frame, first video sample, a warning when no frame arrives for five seconds) and errors, including CaptureProbe and ffmpeg stderr. Input, pixels and SDP are not logged. If the log cannot be opened, startup fails and says why.
 
@@ -141,7 +141,17 @@ The remote video is touch-only, with two modes selected using the Input mode con
 
 Physical mouse hover, buttons and wheel input are not forwarded. Pinches are suppressed rather than sent as scrolling; video zoom is not implemented. Scrolling is vertical, uses the same direction for one and two fingers, and converts 100 CSS pixels into one wheel notch while accumulating smaller movements. New gestures must begin inside the displayed image; letterbox margins cannot click the window. Logical cursor coordinates are preserved across mode changes and video resizing, and start at the center for each new connection. The visible cursor is an overlay for the selected window, rather than the host's physical Windows cursor; the host cursor is never captured.
 
-Text, paste, Japanese IME, Backspace, Enter, viewport resizing, fullscreen where supported, and bitrate display are retained. Composing text stays local until committed. Held input is released on gesture cancellation, blur, page hide, mode changes, disconnect and target changes. After a gesture is interrupted, remaining contacts are ignored until all fingers lift. Win32 text and scroll calls have bounded waits.
+The header uses a fixed-size connection indicator: an amber ring while connecting or waiting for video, a green check when video and control are ready, and a red cross on connection failure before returning to the window list with the error. Connection text remains available to screen readers. The header and video area stay within the viewport, and bitrate updates do not wrap the header onto another line. Touch gestures suppress page zoom while allowing the application list and text editor to scroll vertically.
+
+The header keyboard button opens a floating text editor. Typing, paste, Japanese IME, deletion and cursor movement edit a local draft; only Send forwards the text to the remote window. Enter adds a local newline, and sending does not append an extra Enter. The editor closes after the control channel accepts the text.
+
+Closing without sending retains the draft for the same target, including across reconnects; choosing a different target clears it. Long text is split into Unicode-safe commands. If sending fails, check the remote window before retrying because some text may already have arrived. Host input errors are shown separately from connection status, and the editor can restore the last submitted text. Viewport resizing, fullscreen where supported, and bitrate display are retained.
+
+The Special keys button beside the keyboard toggles a small floating palette. Its highlighted state and underline indicate that the palette is visible; press it again to close the palette. Drag the six-dot handle to place it anywhere inside the video area; arrow keys also move the palette while the handle is focused. Each tap on Backspace sends one press and release to the remote window, with no automatic repeat on a long press. Opening the text editor temporarily hides an open palette; closing the editor restores it at its saved position. A palette that was explicitly closed stays closed. Reconnection resets the palette and its position. Very narrow screens hide the bitrate display to leave room for the controls.
+
+Held input is released on gesture cancellation, blur, page hide, mode changes, disconnect and target changes. After a gesture is interrupted, remaining contacts are ignored until all fingers lift. Win32 text and scroll calls have bounded waits.
+
+Viewport resizing uses 90% of the requested client dimensions after fitting them to the Windows monitor work area, subject to the minimum window size and even video dimensions. This fixed reduction makes the remote UI larger within the phone's existing video area. Pointer and tap coordinates continue to map through the displayed image to the actual window geometry without an additional scale factor.
 
 Call the local APIs directly for debugging:
 
@@ -150,7 +160,7 @@ Invoke-RestMethod 'http://127.0.0.1:8443/api/windows'
 Invoke-RestMethod 'http://127.0.0.1:8443/api/target-window' -Method Post -ContentType 'application/json' -Body '{"handle":657830}'
 ```
 
-`GET /api/snapshot` returns PNG bytes for the selected target. The host never writes snapshots to disk and cannot capture a window other than the selected one; the `out` and `hwnd` parameters are refused. One snapshot helper runs at a time, with a 10-second execution timeout. To keep a copy, save the response:
+`GET /api/snapshot` returns PNG bytes for the selected target. The host never writes snapshots to disk and cannot capture a window other than the selected one. One snapshot helper runs at a time, with a 10-second execution timeout. To keep a copy, save the response:
 
 ```powershell
 Invoke-WebRequest 'http://127.0.0.1:8443/api/snapshot' -OutFile local-copy.png
@@ -175,7 +185,7 @@ The ZIP contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env`, `はじめ�
 
 Self-contained publishing, a pinned ffmpeg bundle with checksum/notices, and a clean Windows 11 installation test remain pending after Windows performance and device validation.
 
-WGC can stop updating a minimized window or a window on an inactive virtual desktop. Target switching cancels the old helper independently of frame arrival. Actual WGC capture, mixed-DPI click alignment, application-specific background input and iPhone behavior still require an interactive Windows/device test.
+WGC can stop updating a minimized window or a window on an inactive virtual desktop. A Chromium application can also stop rendering after another window covers it, even while capture is connected. Target switching cancels the old helper independently of frame arrival. Actual WGC capture, foreground activation under Windows restrictions, mixed-DPI click alignment, application-specific background input and iPhone behavior still require an interactive Windows/device test.
 
 ## Development and maintenance
 
@@ -196,7 +206,7 @@ Key implementation locations:
 | Touch modes, gestures and release | `web-ui/src/input/gestures.js` |
 | Touch mode selector, preference and cursor overlay | `web-ui/src/input/touch-ui.js` |
 | Shared video coordinates | `web-ui/src/input/coordinates.js` |
-| Committed text, IME and special keys | `web-ui/src/input/keyboard.js` |
+| Floating text editor and explicit text sending | `web-ui/src/input/keyboard.js` |
 | Connection readiness, ICE and cleanup | `web-ui/src/core/webrtc.js` |
 | Window list and target selection APIs | `web-ui/src/core/api.js` |
 | Input validation, held keys/buttons and release | `control-server/internal/input/dispatcher.go` |
