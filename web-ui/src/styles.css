@@ -704,11 +704,17 @@ body {
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
-#top-bar button:hover:not(:disabled),
-#text-dialog button:hover,
-#special-keys-palette button:hover:not(:disabled) {
-  background: var(--bg-surface-elevated);
-  border-color: var(--border-hover);
+@media (hover: hover) and (pointer: fine) {
+  #top-bar button:hover:not(:disabled),
+  #text-dialog button:hover:not(:disabled),
+  #special-keys-palette button:hover:not(:disabled) {
+    background: var(--bg-surface-elevated);
+    border-color: var(--border-hover);
+  }
+
+  #top-bar #keyboard-button[aria-expanded="false"]:hover:not(:disabled) {
+    border-color: var(--text-secondary);
+  }
 }
 
 #top-bar button:active:not(:disabled),
@@ -722,6 +728,11 @@ body {
 #special-keys-palette button:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* Focus marks the next action; purple marks an open text dialog. */
+#top-bar #keyboard-button:focus-visible {
+  outline-color: var(--text-primary);
 }
 
 #top-bar button {
@@ -805,7 +816,11 @@ body {
   }
 }
 
-#keyboard-button.active,
+#top-bar #keyboard-button[aria-expanded="true"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
 #special-keys-button.active,
 #send-text-input {
   background: var(--color-primary);
@@ -813,10 +828,11 @@ body {
   box-shadow: 0 0 14px var(--color-primary-glow);
 }
 
-#keyboard-button.active:hover,
-#special-keys-button.active:hover,
-#send-text-input:hover {
-  background: var(--color-primary-hover);
+@media (hover: hover) and (pointer: fine) {
+  #special-keys-button.active:hover,
+  #send-text-input:hover:not(:disabled) {
+    background: var(--color-primary-hover);
+  }
 }
 
 #top-bar button svg,

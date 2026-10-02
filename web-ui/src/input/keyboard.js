@@ -13,7 +13,6 @@ export function attachTextInput({
   inputElement.value = draft.text;
 
   const syncUi = () => {
-    buttonElement.classList.toggle("active", active);
     buttonElement.setAttribute("aria-expanded", String(active));
     sendButton.disabled = disposed || !active || composing || sending || inputElement.value.length === 0;
     if (errorElement.textContent !== draft.error) errorElement.textContent = draft.error;
