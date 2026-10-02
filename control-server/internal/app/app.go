@@ -18,6 +18,7 @@ import (
 	"share-app-host/internal/media"
 	"share-app-host/internal/rdpkeep"
 	"share-app-host/internal/session"
+	"share-app-host/internal/tray"
 	"share-app-host/internal/win32"
 	"share-app-host/internal/window"
 )
@@ -29,12 +30,19 @@ const (
 	statsInterval = 5 * time.Second
 )
 
-// Run starts the host and serves until interrupted. It returns nil after a
-// clean shutdown.
+// Run starts the host and serves until interrupted or exited from the tray.
+// It returns nil after a clean shutdown.
 func Run(cfg config.Config) error {
 	if err := win32.EnableDPIAwareness(); err != nil {
 		log.Printf("DPI awareness: %v", err)
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	closeTray, err := tray.Start(stop)
+	if err != nil {
+		return err
+	}
+	defer closeTray()
 
 	measuring := cfg.CaptureStats != config.CaptureStatsOff
 	probe := capture.NewProbe(cfg.ProbePath, capture.StreamOptions{
@@ -84,13 +92,19 @@ func Run(cfg config.Config) error {
 		Settings:  settings,
 	})
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("HTTP shutdown: %v", err)
+		}
+	}()
+	defer func() {
+		stop()
+		<-shutdownDone
 	}()
 
 	log.Printf("Serving HTTP on %s", cfg.ListenAddr)
