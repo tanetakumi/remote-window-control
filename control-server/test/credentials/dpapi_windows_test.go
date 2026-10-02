@@ -40,7 +40,16 @@ func TestPowerShellScriptProducesCredentialsTheHostCanRead(t *testing.T) {
 			if customOutput {
 				command += " -OutputPath $env:SHARE_APP_TEST_OUTPUT"
 			}
-			cmdEnv := append(os.Environ(), "LOCALAPPDATA="+base, "SHARE_APP_TEST_SCRIPT="+script, "SHARE_APP_TEST_OUTPUT="+path)
+			// Windows PowerShell cannot load PowerShell 7's inherited modules.
+			// Let powershell.exe construct its own default module search path.
+			var cmdEnv []string
+			for _, variable := range os.Environ() {
+				name, _, _ := strings.Cut(variable, "=")
+				if !strings.EqualFold(name, "PSModulePath") {
+					cmdEnv = append(cmdEnv, variable)
+				}
+			}
+			cmdEnv = append(cmdEnv, "LOCALAPPDATA="+base, "SHARE_APP_TEST_SCRIPT="+script, "SHARE_APP_TEST_OUTPUT="+path)
 			cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command)
 			cmd.Env = cmdEnv
 			if output, err := cmd.CombinedOutput(); err != nil {

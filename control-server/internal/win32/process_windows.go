@@ -20,7 +20,7 @@ func EnableDPIAwareness() error {
 	return nil
 }
 
-// HideConsole disables console creation for cmd while preserving redirected I/O.
+// HideConsole prevents console windows for cmd while preserving redirected I/O.
 func HideConsole(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
