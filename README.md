@@ -20,8 +20,9 @@ Only one control connection can be active at a time.
 On the Windows PC:
 
 - Windows 11 x64
-- [.NET 10 x64 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 - FFmpeg with the `libvpx-vp9` encoder, available on `PATH` or beside `share-host.exe`
+
+The .NET runtime is bundled into `CaptureProbe.exe`; it does not need to be installed separately.
 
 On the phone or tablet, use a browser that offers WebRTC VP9 profile 0. The host and browser must be able to reach each other over the network.
 
@@ -30,7 +31,7 @@ On the phone or tablet, use a browser that offers WebRTC VP9 profile 0. The host
 Download a Windows ZIP from [Releases](https://github.com/tanetakumi/remote-window-control/releases) when one is available. If no release has been published, build the Windows package from source using the instructions below.
 
 1. Extract the ZIP into a folder. Keep `share-host.exe`, `CaptureProbe/`, `web/`, and `.env` together.
-2. Install the .NET runtime and FFmpeg listed above.
+2. Install FFmpeg listed above.
 3. Open PowerShell in the extracted folder and run:
 
    ```powershell
@@ -62,7 +63,7 @@ From the repository root, run:
 node scripts/build.mjs
 ```
 
-The output folder contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env`, and the license. The packaged host still requires the .NET 10 x64 Runtime and FFmpeg on the Windows PC.
+The output folder contains `share-host.exe`, `CaptureProbe/`, `web/`, `.env`, and the license. The packaged host still requires FFmpeg on the Windows PC; the .NET runtime ships inside `CaptureProbe.exe`.
 
 ## Configuration
 

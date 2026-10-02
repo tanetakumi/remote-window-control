@@ -3,7 +3,14 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>false</SelfContained>
+    <!-- Bundle the .NET runtime so no separate install is required. Trimming is
+         not safe with WinRT/Windows Graphics Capture projections, so the
+         runtime ships whole. -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- Native DLLs (Vortice/SharpGen) are packed into the exe and extracted
+         to a per-version cache under %TEMP%\.net on first run. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <!-- Compile against the 26100 SDK for WGC dirty regions; keep running on 19041
          and check newer APIs at run time (see WgcCaptureService). -->
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>

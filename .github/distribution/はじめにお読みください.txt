@@ -4,12 +4,9 @@ Windows 版 Share App の使い方
 1. 起動に必要なもの
 
 - Windows 11 x64
-- .NET 10 x64 Runtime
 - FFmpeg（libvpx-vp9 エンコーダー対応版）。PATH に追加するか、ffmpeg.exe を share-host.exe と同じフォルダーに置いてください。
 
-.NET 10 の入手先（Microsoft 公式）:
-    https://dotnet.microsoft.com/en-us/download/dotnet/10.0
-    「.NET Runtime」の Windows x64 インストーラーを選んでください。
+.NET ランタイムは CaptureProbe.exe に同梱済みのため、別途インストールは不要です。
 
 FFmpeg の Windows 用 EXE の入手先（FFmpeg 公式サイトから案内されている gyan.dev）:
     https://www.gyan.dev/ffmpeg/builds/

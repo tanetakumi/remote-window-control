@@ -125,7 +125,7 @@ try {
     console.log("Keeping the existing dist/share-app/.env.");
   }
   console.log(`\nWindows x64 distribution ready: ${output}`);
-  console.log("Run share-host.exe on Windows with the .NET 10 x64 runtime and ffmpeg (libvpx-vp9) available.");
+  console.log("Run share-host.exe on Windows with ffmpeg (libvpx-vp9) available.");
 } catch (error) {
   console.error(`\nBuild failed: ${error.message}`);
   process.exitCode = 1;
