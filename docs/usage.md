@@ -28,7 +28,7 @@ When entering PC mode, other application windows are minimized and the selected 
 
 Popups are clipped at the shared window’s boundary. PC control shares input with anyone using the PC, and cannot inject input into applications running as administrator. If another window covers a pointer press or scroll position, the input is rejected and a notice appears. A window can still move between this check and injection. Switching briefly pauses video; a few old frames may arrive after confirmation.
 
-Sending text replaces the PC's clipboard and pastes it with Ctrl+V. Window mode brings the selected window to the foreground; PC mode retains focus on its popup if one is already active. Each send supports up to 16 KiB of text.
+Sending text replaces the PC's clipboard and pastes it with Ctrl+V. **Send + Enter** also presses Enter after the paste, so you can submit the text from the same dialog. Window mode brings the selected window to the foreground; PC mode retains focus on its popup if one is already active. Each send supports up to 16 KiB of text.
 
 ## Settings and logs
 
@@ -61,6 +61,8 @@ Right-click the notification icon and choose **Open data folder** to find settin
 ## Upgrade and uninstall
 
 Exit Share App before upgrading or uninstalling. Run the new Setup EXE to upgrade, or use **Settings → Apps → Installed apps** to uninstall.
+
+When upgrading from v0.2.0 or earlier to v0.2.1, add `"scrollSensitivity": 1` to `%LOCALAPPDATA%\ShareApp\config.json` before starting the new version, preserving the other five fields. Without this required field, startup fails. Alternatively, back up and delete `config.json` to recreate the default settings on the next start.
 
 The installer stores programs in `%LOCALAPPDATA%\Programs\ShareApp`. Settings, logs, and RDP credentials remain in the separate `%LOCALAPPDATA%\ShareApp` folder after uninstalling. Remove that folder manually to delete your data.
 
