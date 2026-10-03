@@ -54,7 +54,6 @@ Type: filesandordirs; Name: "{app}\web"
 Type: filesandordirs; Name: "{app}\CaptureProbe"
 Type: filesandordirs; Name: "{app}\scripts"
 Type: filesandordirs; Name: "{app}\licenses"
-Type: files; Name: "{app}\はじめにお読みください.txt"
 
 [Files]
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

@@ -108,7 +108,7 @@ func TestWithoutSettingsTheirEndpointIsNotFound(t *testing.T) {
 
 func TestVideoAPISavesPreserveStartupSettings(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(path, []byte(`{"listenAddr":":9000","captureStats":"verify","fps":8,"crf":31,"maxScale":2}`), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"listenAddr":":9000","captureStats":"verify","fps":8,"crf":31,"maxScale":2,"scrollSensitivity":1}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	store, err := config.OpenSettings(path)

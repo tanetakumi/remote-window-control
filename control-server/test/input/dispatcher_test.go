@@ -94,22 +94,16 @@ func TestHeldButtonsAreReleasedWhereThePointerLastMoved(t *testing.T) {
 	}
 }
 
-func TestFieldsTheDispatcherDoesNotKnowAreIgnored(t *testing.T) {
-	d, i := activeDispatcher()
-	// Older or richer clients may send keyboard metadata; it must not break
-	// the command.
-	mustDispatch(t, d, `{"type":"input.keyDown","key":"Enter","code":"Enter","ctrlKey":true,"shiftKey":false,"futureField":{"a":1}}`)
-	if got := i.Events(); len(got) != 1 || got[0] != "down:Enter" {
-		t.Fatalf("events = %v", got)
-	}
-}
-
 func TestDispatchValidation(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
 	}{
 		{"malformed JSON", `{"type":`},
+		{"trailing command", `{"type":"input.keyDown","key":"Enter"} {}`},
+		{"trailing garbage", `{"type":"input.keyDown","key":"Enter"} broken`},
+		{"removed keyboard metadata", `{"type":"input.keyDown","key":"Enter","code":"Enter","ctrlKey":true,"shiftKey":false}`},
+		{"unknown field", `{"type":"input.keyDown","key":"Enter","futureField":{"a":1}}`},
 		{"unknown command", `{"type":"input.explode"}`},
 		{"missing type", `{}`},
 		{"invalid mouse button", `{"type":"input.mouseDown","button":"middle"}`},

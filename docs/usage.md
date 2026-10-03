@@ -54,7 +54,7 @@ The gear button beside **Refresh** changes video settings and scroll sensitivity
 | `maxScale` | Window pixels per browser CSS pixel, limited to 0.5–4. Lower values make the shared window smaller and reduce video data. Changes apply to the next connection or viewport change. |
 | `scrollSensitivity` | Touch scroll multiplier, 0.5–4 (default 1). Applies to both direct and cursor modes. At 1×, 100 CSS pixels of vertical finger travel equal one wheel notch; at 2×, 50 pixels do. Changes apply to the next connection. |
 
-The browser saves these settings while preserving `listenAddr` and `captureStats`. To edit the file directly, exit Share App first and restart it afterward. Invalid configuration prevents startup.
+The browser saves these settings while preserving `listenAddr` and `captureStats`. To edit the file directly, exit Share App first and restart it afterward. All six fields are required; missing, null, unknown, or invalid fields prevent startup. To reset the settings, exit Share App and delete `config.json`; the next start creates a complete file with the defaults.
 
 Right-click the notification icon and choose **Open data folder** to find settings and logs. The log file is `logs\share-host.log` in that folder. Installed, portable, and development builds use the same user data location.
 

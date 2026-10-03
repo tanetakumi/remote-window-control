@@ -13,7 +13,7 @@ $logRoot = Join-Path ([IO.Path]::GetTempPath()) "share-app-installer-test-$([Gui
 New-Item -ItemType Directory -Path $logRoot, $data | Out-Null
 $settings = Join-Path $data 'config.json'
 $credentials = Join-Path $data 'rdp-credentials.bin'
-[IO.File]::WriteAllText($settings, '{"listenAddr":"127.0.0.1:8443","captureStats":"off","fps":8,"crf":31,"maxScale":2}')
+[IO.File]::WriteAllText($settings, '{"listenAddr":"127.0.0.1:8443","captureStats":"off","fps":8,"crf":31,"maxScale":2,"scrollSensitivity":1}')
 # A sentinel, never a real credential; the app is not launched in this test.
 [IO.File]::WriteAllBytes($credentials, [byte[]](1, 2, 3, 4))
 $settingsHash = (Get-FileHash $settings).Hash
@@ -51,11 +51,8 @@ try {
 
     $stale = Join-Path $app 'web/stale-installer-test.js'
     [IO.File]::WriteAllText($stale, 'old generated asset')
-    $legacyGuide = Join-Path $app 'はじめにお読みください.txt'
-    [IO.File]::WriteAllText($legacyGuide, 'obsolete setup guide')
     Run-Installer $InstallerPath 'upgrade.log'
     if (Test-Path $stale) { throw 'Upgrade left a stale generated web asset' }
-    if (Test-Path $legacyGuide) { throw 'Upgrade left the obsolete setup guide' }
     Assert-DataPreserved
     Run-Installer (Join-Path $app 'unins000.exe') 'uninstall.log'
     foreach ($file in @('share-host.exe', 'ffmpeg.exe', 'CaptureProbe/CaptureProbe.exe', 'web/index.html')) {

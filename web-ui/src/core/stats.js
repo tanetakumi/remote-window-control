@@ -12,7 +12,7 @@ export function readConnectionStats(report) {
   let rtt;
   let selectedPairID;
   report.forEach((entry) => {
-    if (entry.type === "inbound-rtp" && (entry.kind === "video" || entry.mediaType === "video")) {
+    if (entry.type === "inbound-rtp" && entry.kind === "video") {
       for (const key of VIDEO_COUNTERS) {
         if (typeof entry[key] === "number") counters[key] = (counters[key] ?? 0) + entry[key];
       }

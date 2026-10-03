@@ -1,9 +1,11 @@
 package input
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 )
 
@@ -99,8 +101,13 @@ func (d *Dispatcher) Dispatch(raw []byte) error {
 		return errMessageTooLarge
 	}
 	var c Command
-	if err := json.Unmarshal(raw, &c); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&c); err != nil {
 		return err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return errors.New("unexpected data after input command")
 	}
 
 	d.mu.Lock()

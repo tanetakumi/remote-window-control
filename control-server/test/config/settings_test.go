@@ -1,7 +1,9 @@
 package config_test
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -10,6 +12,8 @@ import (
 
 	"share-app-host/internal/config"
 )
+
+const completeSettingsJSON = `{"listenAddr":":9000","captureStats":"on","fps":12,"crf":24,"maxScale":1.5,"scrollSensitivity":1}`
 
 func settingsPath(t *testing.T) string {
 	t.Helper()
@@ -57,7 +61,8 @@ func TestSavedSettingsSurviveReopening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := config.Settings{FPS: 15, CRF: 20, MaxScale: 1.5, ScrollSensitivity: 2.5}
+	// Zero is a valid explicit CRF, but an omitted CRF must be rejected.
+	saved := config.Settings{FPS: 15, CRF: 0, MaxScale: 1.5, ScrollSensitivity: 2.5}
 	if err := store.Set(saved); err != nil {
 		t.Fatal(err)
 	}
@@ -139,36 +144,54 @@ func TestFailedSaveKeepsTheCurrentSettings(t *testing.T) {
 	}
 }
 
-func TestSettingsFileFieldsDefaultWhenOmitted(t *testing.T) {
-	path := settingsPath(t)
-	if err := os.WriteFile(path, []byte(`{"fps": 12}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := config.OpenSettings(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := store.Get(), (config.Settings{FPS: 12, CRF: 31, MaxScale: 2, ScrollSensitivity: 1}); got != want {
-		t.Fatalf("settings = %+v, want %+v", got, want)
+func TestIncompleteSettingsFileIsRejectedWithoutRewriting(t *testing.T) {
+	for _, field := range []string{"listenAddr", "captureStats", "fps", "crf", "maxScale", "scrollSensitivity"} {
+		for _, null := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/null=%t", field, null), func(t *testing.T) {
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal([]byte(completeSettingsJSON), &fields); err != nil {
+					t.Fatal(err)
+				}
+				if null {
+					fields[field] = json.RawMessage(`null`)
+				} else {
+					delete(fields, field)
+				}
+				data, err := json.Marshal(fields)
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := settingsPath(t)
+				if err := os.WriteFile(path, data, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := config.OpenSettings(path); err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), field) {
+					t.Fatalf("error = %v, want one naming %s and %s", err, path, field)
+				}
+				if after, err := os.ReadFile(path); err != nil || string(after) != string(data) {
+					t.Fatalf("a rejected load changed the file (err %v)", err)
+				}
+			})
+		}
 	}
 }
 
 func TestBadSettingsFileFailsAndNamesTheFile(t *testing.T) {
 	for name, content := range map[string]string{
 		"syntax":               `{"fps": `,
-		"unknown field":        `{"fps": 8, "fpz": 9}`,
-		"fps range":            `{"fps": 99}`,
-		"crf range":            `{"crf": 64}`,
-		"scale range":          `{"maxScale": 5}`,
-		"scroll zero":          `{"scrollSensitivity": 0}`,
-		"scroll range":         `{"scrollSensitivity": 5}`,
+		"unknown field":        strings.Replace(completeSettingsJSON, `}`, `,"fpz":9}`, 1),
+		"fps range":            strings.Replace(completeSettingsJSON, `"fps":12`, `"fps":99`, 1),
+		"crf range":            strings.Replace(completeSettingsJSON, `"crf":24`, `"crf":64`, 1),
+		"scale range":          strings.Replace(completeSettingsJSON, `"maxScale":1.5`, `"maxScale":5`, 1),
+		"scroll zero":          strings.Replace(completeSettingsJSON, `"scrollSensitivity":1`, `"scrollSensitivity":0`, 1),
+		"scroll range":         strings.Replace(completeSettingsJSON, `"scrollSensitivity":1`, `"scrollSensitivity":5`, 1),
 		"null":                 `null`,
 		"trailing object":      `{} {}`,
 		"trailing garbage":     `{} broken`,
-		"address without port": `{"listenAddr":"127.0.0.1"}`,
-		"port range":           `{"listenAddr":"127.0.0.1:65536"}`,
-		"port zero":            `{"listenAddr":":0"}`,
-		"diagnostics mode":     `{"captureStats":"yes"}`,
+		"address without port": strings.Replace(completeSettingsJSON, `":9000"`, `"127.0.0.1"`, 1),
+		"port range":           strings.Replace(completeSettingsJSON, `":9000"`, `"127.0.0.1:65536"`, 1),
+		"port zero":            strings.Replace(completeSettingsJSON, `":9000"`, `":0"`, 1),
+		"diagnostics mode":     strings.Replace(completeSettingsJSON, `"captureStats":"on"`, `"captureStats":"yes"`, 1),
 	} {
 		path := settingsPath(t)
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -177,20 +200,6 @@ func TestBadSettingsFileFailsAndNamesTheFile(t *testing.T) {
 		if _, err := config.OpenSettings(path); err == nil || !strings.Contains(err.Error(), path) {
 			t.Fatalf("%s: error = %v, want one naming %s", name, err, path)
 		}
-	}
-}
-
-func TestLegacySettingsFileDefaultsScrollSensitivity(t *testing.T) {
-	path := settingsPath(t)
-	if err := os.WriteFile(path, []byte(`{"listenAddr":":9000","captureStats":"on","fps":12,"crf":24,"maxScale":1.5}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := config.OpenSettings(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := store.Get().ScrollSensitivity; got != 1 {
-		t.Fatalf("legacy scroll sensitivity = %g, want 1", got)
 	}
 }
 

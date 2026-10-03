@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -98,30 +97,34 @@ type SettingsStore struct {
 }
 
 // OpenSettings loads the settings file at path. A missing file gives the
-// defaults and creates the file; a malformed or out-of-range file is an error.
+// defaults and creates the file; an incomplete, malformed or out-of-range file
+// is an error.
 func OpenSettings(path string) (*SettingsStore, error) {
-	current := storedSettings{
-		StartupSettings: StartupSettings{ListenAddr: defaultAddr, CaptureStats: CaptureStatsOff},
-		Settings:        DefaultSettings(),
-	}
+	var current storedSettings
 	data, err := os.ReadFile(path)
 	missing := os.IsNotExist(err)
 	switch {
 	case missing:
+		current = storedSettings{
+			StartupSettings: StartupSettings{ListenAddr: defaultAddr, CaptureStats: CaptureStatsOff},
+			Settings:        DefaultSettings(),
+		}
 	case err != nil:
 		return nil, fmt.Errorf("%s: %w", path, err)
 	default:
-		// Fields missing from the file keep their defaults.
-		if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
-			return nil, fmt.Errorf("%s: settings must be a JSON object", path)
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		for _, name := range []string{"listenAddr", "captureStats", "fps", "crf", "maxScale", "scrollSensitivity"} {
+			if value, ok := fields[name]; !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return nil, fmt.Errorf("%s: settings require %s", path, name)
+			}
 		}
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&current); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-		if err := decoder.Decode(new(any)); err != io.EOF {
-			return nil, fmt.Errorf("%s: unexpected data after settings object", path)
 		}
 		if err := current.StartupSettings.validate(); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)

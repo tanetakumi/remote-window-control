@@ -4,7 +4,6 @@ using System.Runtime.InteropServices;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using WinRT;
-using Windows.Foundation.Metadata;
 using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
@@ -38,12 +37,6 @@ internal sealed class WgcCaptureService : IDisposable
     {
         _stats = stats;
     }
-
-    // Dirty regions arrived in Windows 11 24H2 (SDK 26100). Probe the API
-    // itself rather than the OS build.
-    private static readonly Lazy<bool> DirtyRegionsPresent = new(() =>
-        ApiInformation.IsPropertyPresent("Windows.Graphics.Capture.GraphicsCaptureSession", "DirtyRegionMode") &&
-        ApiInformation.IsPropertyPresent("Windows.Graphics.Capture.Direct3D11CaptureFrame", "DirtyRegions"));
 
     public static bool IsSupported()
     {
@@ -191,10 +184,6 @@ internal sealed class WgcCaptureService : IDisposable
     // rendered and copied (ReportOnly). Returns the mode for the stats line.
     private string EnableDirtyRegions()
     {
-        if (!DirtyRegionsPresent.Value)
-        {
-            return "unsupported";
-        }
         try
         {
             _session!.DirtyRegionMode = GraphicsCaptureDirtyRegionMode.ReportOnly;

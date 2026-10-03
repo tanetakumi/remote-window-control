@@ -28,7 +28,7 @@ const MaxMessageBytes = 64 * 1024
 
 // Command is one input message. Pointer coordinates are normalised to the
 // captured window image (0..1). Only the fields the web client sends are
-// declared; anything else in the JSON is ignored.
+// accepted.
 type Command struct {
 	Type             string  `json:"type"`
 	Mode             string  `json:"mode,omitempty"`

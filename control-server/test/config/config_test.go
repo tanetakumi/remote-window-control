@@ -115,7 +115,7 @@ func TestStartupSettingsComeFromUserConfig(t *testing.T) {
 	context := env(t, t.TempDir(), "")
 	mkdir(t, context.DataDir)
 	path := filepath.Join(context.DataDir, "config.json")
-	if err := os.WriteFile(path, []byte(`{"listenAddr":":9000","captureStats":"verify","fps":12}`), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"listenAddr":":9000","captureStats":"verify","fps":12,"crf":31,"maxScale":2,"scrollSensitivity":1}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.LoadFrom(context)
