@@ -35,7 +35,7 @@ func TestMessageInjectorRequiresATargetWindow(t *testing.T) {
 				"MouseDown":           func() error { return m.MouseDown("left", 0.5, 0.5) },
 				"MouseUp":             func() error { return m.MouseUp("left", 0.5, 0.5) },
 				"Scroll":              func() error { return m.Scroll(1, 0.5, 0.5) },
-				"Text":                func() error { return m.Text("hello") },
+				"Text":                func() error { return m.Text("hello", false) },
 				"KeyDown special key": func() error { return m.KeyDown(input.Command{Key: "Enter"}) },
 				"KeyUp special key":   func() error { return m.KeyUp(input.Command{Key: "Enter"}) },
 				"ResizeViewport":      func() error { return m.ResizeViewport(input.Command{Width: 390, Height: 844}) },
@@ -196,7 +196,7 @@ func TestRealShiftIsReleasedAfterTheTargetIsGone(t *testing.T) {
 func TestTextIsPastedFromTheClipboardWithRealCtrlV(t *testing.T) {
 	keys := &recordingKeys{}
 	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, maxScale, keys)
-	if err := m.Text("日本語\nline 2\r\nline 3"); err != nil {
+	if err := m.Text("日本語\nline 2\r\nline 3", false); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
@@ -208,11 +208,29 @@ func TestTextIsPastedFromTheClipboardWithRealCtrlV(t *testing.T) {
 	}
 }
 
+// Enter follows the paste as real input, after Ctrl is released, so it can
+// neither overtake the paste nor turn into Ctrl+Enter.
+func TestTextWithEnterPressesEnterAfterThePaste(t *testing.T) {
+	keys := &recordingKeys{}
+	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, maxScale, keys)
+	if err := m.Text("ls", true); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"activate", `clipboard "ls"`,
+		"send ctrl down", "send v down", "send v up", "send ctrl up",
+		"send enter down", "send enter up",
+	}
+	if !slices.Equal(keys.calls, want) {
+		t.Fatalf("calls = %v, want %v", keys.calls, want)
+	}
+}
+
 func TestTextIsNotSentWhenTheTargetCannotBeActivated(t *testing.T) {
 	denied := errors.New("denied")
 	keys := &recordingKeys{activate: denied}
 	m := input.NewMessageInjectorWithKeys(fakeTarget{handle: 7, ok: true}, maxScale, keys)
-	if err := m.Text("hello"); !errors.Is(err, denied) {
+	if err := m.Text("hello", true); !errors.Is(err, denied) {
 		t.Fatalf("Text = %v, want %v", err, denied)
 	}
 	if want := []string{"activate"}; !slices.Equal(keys.calls, want) {

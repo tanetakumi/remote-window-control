@@ -3,6 +3,7 @@ package win32
 // Virtual-key codes the host sends itself. Shift is also the only modifier the
 // web client sends.
 const (
+	VKReturn  uint16 = 0x0D
 	VKShift   uint16 = 0x10
 	VKControl uint16 = 0x11
 	VKV       uint16 = 0x56
@@ -14,7 +15,7 @@ const (
 var domKeyToVirtualKey = map[string]uint16{
 	"Backspace":  0x08, // VK_BACK
 	"Tab":        0x09, // VK_TAB
-	"Enter":      0x0D, // VK_RETURN
+	"Enter":      VKReturn,
 	"Shift":      VKShift,
 	"Escape":     0x1B, // VK_ESCAPE
 	" ":          0x20, // VK_SPACE

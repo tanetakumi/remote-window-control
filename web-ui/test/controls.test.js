@@ -37,7 +37,8 @@ window.location = { protocol: "http:", host: "host:8443" };
 function createEditor(draft = { text: "", lastSent: "", error: "" }, sendControl) {
   const controls = {
     buttonElement: new Element(), dialogElement: new Element(), inputElement: new Element(),
-    closeButton: new Element(), sendButton: new Element(), restoreButton: new Element(),
+    closeButton: new Element(), sendButton: new Element(), sendEnterButton: new Element(),
+    restoreButton: new Element(),
     errorElement: new Element(), draft,
   };
   const sent = [];
@@ -104,10 +105,27 @@ test("the whole text, line breaks included, is sent as one command on demand", (
   editor.cleanup();
 });
 
+test("Send + Enter asks the host to press Enter after the same paste", () => {
+  const { controls, sent, editor } = createEditor();
+  emit(controls.buttonElement, "click");
+  assert.equal(controls.sendEnterButton.disabled, true);
+  edit(controls, "ls -la\n");
+  assert.equal(controls.sendEnterButton.disabled, false);
+  emit(controls.inputElement, "compositionstart");
+  emit(controls.sendEnterButton, "click");
+  assert.equal(controls.sendEnterButton.disabled, true);
+  emit(controls.inputElement, "compositionend");
+  emit(controls.sendEnterButton, "click");
+  emit(controls.sendEnterButton, "click");
+  assert.deepEqual(sent, [{ type: "input.text", text: "ls -la\n", enter: true }]);
+  assert.equal(controls.dialogElement.open, false);
+  editor.cleanup();
+});
+
 test("touch presses on dialog buttons do not steal focus from the textarea", () => {
   const { controls, editor } = createEditor();
   emit(controls.buttonElement, "click");
-  for (const name of ["sendButton", "restoreButton", "closeButton"]) {
+  for (const name of ["sendButton", "sendEnterButton", "restoreButton", "closeButton"]) {
     const event = new Event("pointerdown", { cancelable: true });
     Object.assign(event, { pointerType: "touch", isPrimary: true, button: 0 });
     controls[name].dispatchEvent(event);

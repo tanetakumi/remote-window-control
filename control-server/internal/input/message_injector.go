@@ -17,6 +17,11 @@ const (
 	// real input. A window receives posted messages ahead of input from the
 	// system, so messages posted straight afterwards could overtake those keys.
 	inputDrain = 30 * time.Millisecond
+	// pasteSettle is how long the injector waits between Ctrl+V and an Enter
+	// that follows it. Some applications, such as Windows Terminal, read the
+	// clipboard asynchronously after Ctrl+V, so an Enter queued right behind it
+	// could be handled before the pasted text arrives.
+	pasteSettle = 150 * time.Millisecond
 )
 
 // TargetSource reports the handle of the window that should receive input.
@@ -201,7 +206,12 @@ func (m *MessageInjector) key(c Command, up bool) error {
 // and without passing through an input method editor. Applications read Ctrl
 // from the system key state, so the target must be in the foreground; it is
 // brought there first. The host clipboard is left holding the text.
-func (m *MessageInjector) Text(text string) error {
+//
+// With enter, Enter is pressed after the paste as real input too, never
+// posted: a posted key would overtake the queued Ctrl+V, and could be read as
+// Ctrl+Enter while Ctrl is still down in the target's key state. It is skipped
+// if the paste could not be sent, so a partial paste is never submitted.
+func (m *MessageInjector) Text(text string, enter bool) error {
 	hwnd, err := m.handle()
 	if err != nil {
 		return err
@@ -221,6 +231,12 @@ func (m *MessageInjector) Text(text string) error {
 		err = m.keys.Send(win32.VKV, true)
 	}
 	err = errors.Join(err, m.keys.Send(win32.VKControl, true))
+	if err == nil && enter {
+		time.Sleep(pasteSettle)
+		if err = m.keys.Send(win32.VKReturn, false); err == nil {
+			err = m.keys.Send(win32.VKReturn, true)
+		}
+	}
 	time.Sleep(inputDrain)
 	return err
 }

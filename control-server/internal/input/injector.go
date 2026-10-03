@@ -11,5 +11,6 @@ type Injector interface {
 	ResizeViewport(command Command) error
 	KeyDown(command Command) error
 	KeyUp(command Command) error
-	Text(text string) error
+	// Text types text and, with enter, presses Enter once it has arrived.
+	Text(text string, enter bool) error
 }

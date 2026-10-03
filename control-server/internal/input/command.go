@@ -35,6 +35,7 @@ type Command struct {
 	Button           string  `json:"button,omitempty"`
 	Key              string  `json:"key,omitempty"`
 	Text             string  `json:"text,omitempty"`
+	Enter            bool    `json:"enter,omitempty"`
 	X                float64 `json:"x,omitempty"`
 	Y                float64 `json:"y,omitempty"`
 	DeltaY           float64 `json:"deltaY,omitempty"`

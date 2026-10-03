@@ -810,7 +810,8 @@ body {
 }
 
 #special-keys-button.active,
-#send-text-input {
+#send-text-input,
+#send-enter-text-input {
   background: var(--color-primary);
   border-color: rgba(99, 102, 241, 0.8);
   box-shadow: 0 0 14px var(--color-primary-glow);
@@ -818,7 +819,8 @@ body {
 
 @media (hover: hover) and (pointer: fine) {
   #special-keys-button.active:hover,
-  #send-text-input:hover:not(:disabled) {
+  #send-text-input:hover:not(:disabled),
+  #send-enter-text-input:hover:not(:disabled) {
     background: var(--color-primary-hover);
   }
 }
@@ -1044,6 +1046,10 @@ body {
 
 #send-text-input {
   margin-left: auto;
+}
+
+#send-text-input,
+#send-enter-text-input {
   min-width: 80px;
 }
 

@@ -2,7 +2,7 @@ import { createListenerTracker } from "../lib/events.js";
 
 export function attachTextInput({
   buttonElement, dialogElement, inputElement, closeButton, sendButton,
-  restoreButton, errorElement, draft, onOpenChange,
+  sendEnterButton, restoreButton, errorElement, draft, onOpenChange,
 }, sendControl) {
   const { listen, cleanup: removeListeners } = createListenerTracker();
   let active = false;
@@ -14,7 +14,8 @@ export function attachTextInput({
 
   const syncUi = () => {
     buttonElement.setAttribute("aria-expanded", String(active));
-    sendButton.disabled = disposed || !active || composing || sending || inputElement.value.length === 0;
+    sendButton.disabled = sendEnterButton.disabled =
+      disposed || !active || composing || sending || inputElement.value.length === 0;
     if (errorElement.textContent !== draft.error) errorElement.textContent = draft.error;
     errorElement.hidden = !draft.error;
     restoreButton.hidden = !draft.error || !draft.lastSent || inputElement.value.length > 0;
@@ -66,7 +67,7 @@ export function attachTextInput({
       event.preventDefault();
     }
   };
-  for (const button of [closeButton, sendButton, restoreButton]) {
+  for (const button of [closeButton, sendButton, sendEnterButton, restoreButton]) {
     listen(button, "pointerdown", keepFocus);
   }
   listen(closeButton, "click", close);
@@ -104,15 +105,18 @@ export function attachTextInput({
     syncUi();
     inputElement.focus({ preventScroll: true });
   });
-  listen(sendButton, "click", () => {
+  const send = (enter) => {
     if (disposed || !active || composing || sending || !inputElement.value) return;
     sending = true;
     draft.text = draft.lastSent = inputElement.value;
     draft.error = "";
     syncUi();
     try {
-      // The host pastes the whole text at once, line breaks included.
-      if (!sendControl({ type: "input.text", text: draft.text })) {
+      // The host pastes the whole text at once, line breaks included. Enter
+      // rides in the same command so the host can press it after the paste.
+      const command = { type: "input.text", text: draft.text };
+      if (enter) command.enter = true;
+      if (!sendControl(command)) {
         reportError("Text could not be sent.");
         return;
       }
@@ -123,7 +127,9 @@ export function attachTextInput({
       sending = false;
       syncUi();
     }
-  });
+  };
+  listen(sendButton, "click", () => send(false));
+  listen(sendEnterButton, "click", () => send(true));
   listen(window, "resize", positionDialog);
   if (window.visualViewport) {
     listen(window.visualViewport, "resize", positionDialog);

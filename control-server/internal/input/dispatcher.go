@@ -191,7 +191,7 @@ func (d *Dispatcher) Dispatch(raw []byte) error {
 		if len(c.Text) > maxTextBytes {
 			return errTextTooLarge
 		}
-		return d.injector.Text(c.Text)
+		return d.injector.Text(c.Text, c.Enter)
 	default:
 		return fmt.Errorf("unsupported input command: %s", c.Type)
 	}

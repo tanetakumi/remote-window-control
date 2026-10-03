@@ -114,7 +114,7 @@ func (t *mutablePCTarget) CurrentHandle() (uint64, bool) { return t.handle, t.ha
 func TestPCPopupKeepsFocusForTextAndKeys(t *testing.T) {
 	desk := &pcDesktop{hit: 8, front: 8}
 	s := input.NewSendInputInjectorWithDesktop(fakeTarget{7, true}, maxScale, desk)
-	if err := s.Text("hello"); err != nil {
+	if err := s.Text("hello", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.KeyDown(input.Command{Key: "Enter"}); err != nil {
@@ -134,7 +134,7 @@ func TestPCPopupKeepsFocusForTextAndKeys(t *testing.T) {
 func TestPCForegroundDenialBlocksKeysTextAndWheel(t *testing.T) {
 	desk := &pcDesktop{hit: 8, front: 9, denied: true}
 	s := input.NewSendInputInjectorWithDesktop(fakeTarget{7, true}, maxScale, desk)
-	for _, action := range []func() error{func() error { return s.Text("hello") }, func() error { return s.KeyDown(input.Command{Key: "Enter"}) }, func() error { return s.Scroll(1, .5, .5) }} {
+	for _, action := range []func() error{func() error { return s.Text("hello", false) }, func() error { return s.KeyDown(input.Command{Key: "Enter"}) }, func() error { return s.Scroll(1, .5, .5) }} {
 		if err := action(); !errors.Is(err, win32.ErrForegroundDenied) {
 			t.Fatal(err)
 		}

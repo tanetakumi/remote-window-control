@@ -69,6 +69,7 @@ func TestDispatchRoutesCommandsToTheInjector(t *testing.T) {
 		`{"type":"input.scroll","deltaY":2,"x":0.1,"y":0.2}`,
 		`{"type":"viewport.resize","width":390,"height":844}`,
 		`{"type":"input.text","text":"hello"}`,
+		`{"type":"input.text","text":"run","enter":true}`,
 	} {
 		mustDispatch(t, d, command)
 	}
@@ -78,6 +79,7 @@ func TestDispatchRoutesCommandsToTheInjector(t *testing.T) {
 		"scroll:2@0.1,0.2",
 		"resize:390x844",
 		"text:hello",
+		"text+enter:run",
 	}
 	if !reflect.DeepEqual(i.Events(), want) {
 		t.Fatalf("events = %v, want %v", i.Events(), want)

@@ -59,6 +59,11 @@ func (r *RecordingInjector) ResizeViewport(c input.Command) error {
 }
 func (r *RecordingInjector) KeyDown(c input.Command) error { return r.Record("down:%s", c.Key) }
 func (r *RecordingInjector) KeyUp(c input.Command) error   { return r.Record("up:%s", c.Key) }
-func (r *RecordingInjector) Text(s string) error           { return r.Record("text:%s", s) }
+func (r *RecordingInjector) Text(s string, enter bool) error {
+	if enter {
+		return r.Record("text+enter:%s", s)
+	}
+	return r.Record("text:%s", s)
+}
 
 var _ input.Injector = (*RecordingInjector)(nil)
