@@ -18,13 +18,13 @@ You need **Windows 11 x64** and a phone or tablet browser with **WebRTC VP9** su
 
 For a portable copy, download the ZIP, extract all its contents, and run `share-host.exe`.
 
-Closing the browser leaves Share App running. Right-click its notification icon and choose **Exit（終了）** to stop it. Only one device can control a window at a time.
+Closing the browser leaves Share App running. Right-click its notification icon and choose **Exit** to stop it. Only one device can control a window at a time.
 
 **Share App has no login.** Use a trusted private network and restrict access; do not expose it directly to the public internet. By default, only the PC itself can connect.
 
 ## Settings and help
 
-The gear button beside **Refresh** opens the video settings. Settings and logs are stored in `%LOCALAPPDATA%\ShareApp`; use **Open data folder（データフォルダーを開く）** from the notification icon to find them.
+The gear button beside **Refresh** opens the video settings. Settings and logs are stored in `%LOCALAPPDATA%\ShareApp`; use **Open data folder** from the notification icon to find them.
 
 - [Connection, configuration, RDP keep-alive, and troubleshooting](docs/usage.md)
 - [Build from source and create release packages](docs/build.md)

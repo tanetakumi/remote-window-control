@@ -1,9 +1,6 @@
 .DS_Store
 Thumbs.db
 
-# Local env (secrets, paths)
-.env
-
 # Locally generated encrypted RDP credentials
 rdp-credentials.bin
 

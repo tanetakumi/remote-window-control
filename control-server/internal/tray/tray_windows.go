@@ -201,7 +201,7 @@ func run(onExit func(), ready func(uintptr)) error {
 	defer destroyIcon.Call(icon)
 	data = notifyData{Window: hwnd, ID: 1, Flags: 0x01 | 0x02 | 0x04 | 0x80, Callback: wmTray, Icon: icon, Version: 4}
 	data.Size = uint32(unsafe.Sizeof(data))
-	copy(data.Tip[:], windows.StringToUTF16("Share App — 起動中"))
+	copy(data.Tip[:], windows.StringToUTF16("Share App — Running"))
 	if err := addIcon(&data); err != nil {
 		return err
 	}
@@ -238,11 +238,11 @@ func showMenu(hwnd uintptr, data *notifyData, onExit func()) error {
 		return callError("create menu", err)
 	}
 	defer destroyMenu.Call(menu)
-	openLabel := windows.StringToUTF16Ptr("Open data folder（データフォルダーを開く）")
+	openLabel := windows.StringToUTF16Ptr("Open data folder")
 	if ok, _, err := appendMenu.Call(menu, 0, openDataCommand, uintptr(unsafe.Pointer(openLabel))); ok == 0 {
 		return callError("append open data folder menu", err)
 	}
-	label := windows.StringToUTF16Ptr("Exit（終了）")
+	label := windows.StringToUTF16Ptr("Exit")
 	if ok, _, err := appendMenu.Call(menu, 0, exitCommand, uintptr(unsafe.Pointer(label))); ok == 0 {
 		return callError("append exit menu", err)
 	}

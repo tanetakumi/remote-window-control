@@ -48,7 +48,7 @@ The gear button beside **Refresh** changes video settings. They are shared by al
 
 The browser saves the three video settings while preserving `listenAddr` and `captureStats`. To edit the file directly, exit Share App first and restart it afterward. Invalid configuration prevents startup.
 
-Right-click the notification icon and choose **Open data folder（データフォルダーを開く）** to find settings and logs. The log file is `logs\share-host.log` in that folder. Installed, portable, and development builds use the same user data location.
+Right-click the notification icon and choose **Open data folder** to find settings and logs. The log file is `logs\share-host.log` in that folder. Installed, portable, and development builds use the same user data location.
 
 ## Upgrade and uninstall
 
