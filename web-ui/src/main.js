@@ -285,6 +285,7 @@ async function startRemoteControl() {
 function returnToWindows(message = "", isError = false) {
   cleanupRemote();
   connectionAbort?.abort();
+  settings.close();
   selectScreen.hidden = false;
   settingsScreen.hidden = true;
   remoteScreen.hidden = true;
@@ -320,6 +321,8 @@ const settings = attachSettingsScreen({
   scrollValue: document.querySelector("#settings-scroll-value"),
   saveButton: document.querySelector("#settings-save"),
   statusElement: document.querySelector("#settings-status"),
+  noticeElement: document.querySelector("#settings-notice"),
+  dismissButton: document.querySelector("#dismiss-settings-notice"),
 }, { load: fetchSettings, save: saveSettings });
 
 settingsButton.addEventListener("click", () => {
@@ -330,6 +333,7 @@ settingsButton.addEventListener("click", () => {
 });
 
 document.querySelector("#settings-back").addEventListener("click", () => {
+  settings.close();
   settingsScreen.hidden = true;
   selectScreen.hidden = false;
 });

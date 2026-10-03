@@ -61,29 +61,37 @@
             </div>
           </header>
 
-          <p id="settings-status" role="status" aria-live="polite"></p>
-
           <div class="settings-field settings-slider">
             <label for="settings-fps">Video FPS</label>
             <output id="settings-fps-value" for="settings-fps"></output>
-            <input id="settings-fps" type="range" min="1" max="30" step="1" />
+            <p id="settings-fps-description" class="settings-description">Higher values make motion smoother.</p>
+            <input id="settings-fps" type="range" min="1" max="30" step="1" aria-describedby="settings-fps-description" />
           </div>
           <div class="settings-field settings-slider">
-            <label for="settings-crf">Video quality CRF (lower is sharper)</label>
+            <label for="settings-crf">Video quality (CRF)</label>
             <output id="settings-crf-value" for="settings-crf"></output>
-            <input id="settings-crf" type="range" min="0" max="63" step="1" />
+            <p id="settings-crf-description" class="settings-description">Lower values give a sharper image.</p>
+            <input id="settings-crf" type="range" min="0" max="63" step="1" aria-describedby="settings-crf-description" />
           </div>
           <div class="settings-field settings-slider">
-            <label for="settings-scale">Max window scale (pixels per CSS pixel)</label>
+            <label for="settings-scale">Max window scale</label>
             <output id="settings-scale-value" for="settings-scale"></output>
-            <input id="settings-scale" type="range" min="0.5" max="4" step="0.25" />
+            <p id="settings-scale-description" class="settings-description">Maximum pixels per CSS pixel.</p>
+            <input id="settings-scale" type="range" min="0.5" max="4" step="0.25" aria-describedby="settings-scale-description" />
           </div>
           <div class="settings-field settings-slider">
-            <label for="settings-scroll">Scroll sensitivity (higher is faster)</label>
+            <label for="settings-scroll">Scroll sensitivity</label>
             <output id="settings-scroll-value" for="settings-scroll"></output>
-            <input id="settings-scroll" type="range" min="0.5" max="4" step="0.25" />
+            <p id="settings-scroll-description" class="settings-description">Higher values scroll faster.</p>
+            <input id="settings-scroll" type="range" min="0.5" max="4" step="0.25" aria-describedby="settings-scroll-description" />
           </div>
           <button id="settings-save" type="button" disabled>Save</button>
+        </div>
+        <div id="settings-notice" class="floating-notice" hidden>
+          <span id="settings-status" class="notice-message" role="status" aria-live="polite" aria-atomic="true"></span>
+          <button id="dismiss-settings-notice" class="dismiss-button" type="button" aria-label="Dismiss message">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
         </div>
       </main>
 
@@ -171,8 +179,8 @@
               </button>
             </div>
           </div>
-          <div id="remote-notice" hidden>
-            <span id="remote-notice-message"></span>
+          <div id="remote-notice" class="floating-notice" hidden>
+            <span id="remote-notice-message" class="notice-message"></span>
             <button id="dismiss-notice" class="dismiss-button" type="button" aria-label="Dismiss message">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
             </button>

@@ -2,17 +2,27 @@
 // them back when Save is pressed.
 export function attachSettingsScreen({
   fpsInput, fpsValue, crfInput, crfValue, scaleInput, scaleValue, scrollInput, scrollValue, saveButton, statusElement,
+  noticeElement, dismissButton,
 }, { load, save }) {
   let busy = false;
   let ready = false;
+  let active = false;
+  let noticeTimer;
 
   const render = () => {
     saveButton.disabled = busy || !ready;
   };
   const setStatus = (message, isError = false) => {
+    clearTimeout(noticeTimer);
+    if (!active) return;
     statusElement.textContent = message;
     statusElement.classList.toggle("has-error", isError);
+    noticeElement.hidden = !message;
+    if (message && !isError) {
+      noticeTimer = setTimeout(() => setStatus(""), 5000);
+    }
   };
+  dismissButton.addEventListener("click", () => setStatus(""));
   const showValues = () => {
     fpsValue.textContent = fpsInput.value;
     crfValue.textContent = crfInput.value;
@@ -39,7 +49,7 @@ export function attachSettingsScreen({
         maxScale: Number(scaleInput.value),
         scrollSensitivity: Number(scrollInput.value),
       }));
-      setStatus("Saved. FPS, CRF and scroll sensitivity apply from the next connection; max window scale applies from the next viewport change or connection.");
+      setStatus("Saved. Reconnect to apply; window scale also updates on viewport changes.");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Saving failed", true);
     } finally {
@@ -52,6 +62,8 @@ export function attachSettingsScreen({
   return {
     // Reload the stored values, discarding unsaved edits.
     async open() {
+      active = true;
+      setStatus("");
       ready = false;
       render();
       try {
@@ -62,6 +74,10 @@ export function attachSettingsScreen({
         setStatus(err instanceof Error ? err.message : "Loading failed", true);
       }
       render();
+    },
+    close() {
+      setStatus("");
+      active = false;
     },
   };
 }

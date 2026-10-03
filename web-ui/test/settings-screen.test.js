@@ -6,6 +6,7 @@ class Element extends EventTarget {
   value = "";
   textContent = "";
   disabled = false;
+  hidden = true;
   attributes = {};
   classes = new Set();
   classList = { toggle: (name, on) => (on ? this.classes.add(name) : this.classes.delete(name)) };
@@ -19,6 +20,7 @@ function createScreen(api) {
     scaleInput: new Element(), scaleValue: new Element(),
     scrollInput: new Element(), scrollValue: new Element(),
     saveButton: new Element(), statusElement: new Element(),
+    noticeElement: new Element(), dismissButton: new Element(),
   };
   return { controls, screen: attachSettingsScreen(controls, api) };
 }
@@ -40,6 +42,7 @@ test("opening loads the stored settings and enables Save", async () => {
   assert.equal(controls.scrollValue.textContent, "2×");
   assert.equal(controls.saveButton.disabled, false);
   assert.equal(controls.statusElement.textContent, "");
+  assert.equal(controls.noticeElement.hidden, true);
 });
 
 test("a failed load reports the error and keeps Save disabled", async () => {
@@ -50,11 +53,13 @@ test("a failed load reports the error and keeps Save disabled", async () => {
   await screen.open();
   assert.equal(controls.statusElement.textContent, "host unreachable");
   assert.equal(controls.statusElement.classes.has("has-error"), true);
+  assert.equal(controls.noticeElement.hidden, false);
   assert.equal(controls.saveButton.disabled, true);
   click(controls.saveButton);
 });
 
-test("Save sends the edited values and shows what the host stored", async () => {
+test("Save sends the edited values and shows a temporary floating notice", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const saved = [];
   const { controls, screen } = createScreen({
     load: async () => ({ fps: 8, crf: 31, maxScale: 2, scrollSensitivity: 1 }),
@@ -72,11 +77,17 @@ test("Save sends the edited values and shows what the host stored", async () => 
   await settle();
   assert.deepEqual(saved, [{ fps: 20, crf: 0, maxScale: 0.75, scrollSensitivity: 2.5 }]);
   assert.match(controls.statusElement.textContent, /^Saved/);
-  assert.match(controls.statusElement.textContent, /FPS, CRF and scroll sensitivity.*next connection/);
-  assert.match(controls.statusElement.textContent, /window scale.*next viewport change/);
+  assert.match(controls.statusElement.textContent, /Reconnect to apply/);
+  assert.match(controls.statusElement.textContent, /window scale.*viewport changes/);
+  assert.equal(controls.noticeElement.hidden, false);
   assert.equal(controls.statusElement.classes.has("has-error"), false);
   assert.equal(controls.saveButton.disabled, false);
   assert.equal(controls.fpsValue.textContent, "20");
+  t.mock.timers.tick(4999);
+  assert.equal(controls.noticeElement.hidden, false);
+  t.mock.timers.tick(1);
+  assert.equal(controls.noticeElement.hidden, true);
+  assert.equal(controls.statusElement.textContent, "");
 });
 
 test("the sliders show their value while moving", async () => {
@@ -103,7 +114,8 @@ test("the sliders show their value while moving", async () => {
   assert.equal(controls.scrollValue.textContent, "2.25×");
 });
 
-test("a rejected save shows the host message and can be retried", async () => {
+test("a rejected save stays visible until dismissed and can be retried", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   let fail = true;
   const { controls, screen } = createScreen({
     load: async () => ({ fps: 8, crf: 31, maxScale: 2, scrollSensitivity: 1 }),
@@ -116,9 +128,59 @@ test("a rejected save shows the host message and can be retried", async () => {
   click(controls.saveButton);
   await settle();
   assert.equal(controls.statusElement.textContent, "could not save the settings");
+  assert.equal(controls.noticeElement.hidden, false);
+  t.mock.timers.tick(10000);
+  assert.equal(controls.noticeElement.hidden, false);
+  click(controls.dismissButton);
+  assert.equal(controls.noticeElement.hidden, true);
   assert.equal(controls.saveButton.disabled, false);
   fail = false;
   click(controls.saveButton);
   await settle();
   assert.match(controls.statusElement.textContent, /^Saved/);
+  assert.equal(controls.statusElement.classes.has("has-error"), false);
+});
+
+test("saving again restarts the notice timeout", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { controls, screen } = createScreen({
+    load: async () => ({ fps: 8, crf: 31, maxScale: 2, scrollSensitivity: 1 }),
+    save: async (settings) => settings,
+  });
+  await screen.open();
+  click(controls.saveButton);
+  await settle();
+  t.mock.timers.tick(4000);
+  click(controls.saveButton);
+  await settle();
+  t.mock.timers.tick(1000);
+  assert.equal(controls.noticeElement.hidden, false);
+  t.mock.timers.tick(4000);
+  assert.equal(controls.noticeElement.hidden, true);
+});
+
+test("leaving settings clears the notice and suppresses a pending save notice", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let finishSave;
+  const { controls, screen } = createScreen({
+    load: async () => ({ fps: 8, crf: 31, maxScale: 2, scrollSensitivity: 1 }),
+    save: (settings) => new Promise(resolve => { finishSave = () => resolve(settings); }),
+  });
+  await screen.open();
+  click(controls.saveButton);
+  screen.close();
+  finishSave();
+  await settle();
+  assert.equal(controls.noticeElement.hidden, true);
+  assert.equal(controls.statusElement.textContent, "");
+  await screen.open();
+  click(controls.saveButton);
+  finishSave();
+  await settle();
+  assert.equal(controls.noticeElement.hidden, false);
+  screen.close();
+  assert.equal(controls.noticeElement.hidden, true);
+  t.mock.timers.tick(5000);
+  await screen.open();
+  assert.equal(controls.noticeElement.hidden, true);
 });
