@@ -63,6 +63,7 @@ func (c EncoderConfig) Args(width, height int) []string {
 		"-an",
 		"-vf", "format=yuv420p",
 		"-c:v", "libvpx-vp9",
+		"-threads", "8",
 		"-profile:v", "0",
 		"-b:v", c.Bitrate,
 		"-crf", strconv.Itoa(c.CRF),

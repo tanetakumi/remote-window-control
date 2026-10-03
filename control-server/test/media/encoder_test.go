@@ -26,6 +26,7 @@ func TestEncoderArgsBaseline(t *testing.T) {
 		"-an",
 		"-vf", "format=yuv420p",
 		"-c:v", "libvpx-vp9",
+		"-threads", "8",
 		"-profile:v", "0",
 		"-b:v", "6M",
 		"-crf", "31",
