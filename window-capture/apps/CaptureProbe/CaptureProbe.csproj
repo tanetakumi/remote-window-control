@@ -11,10 +11,9 @@
     <!-- Native DLLs (Vortice/SharpGen) are packed into the exe and extracted
          to a per-version cache under %TEMP%\.net on first run. -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <!-- Compile against the 26100 SDK for WGC dirty regions; keep running on 19041
-         and check newer APIs at run time (see WgcCaptureService). -->
+    <!-- Windows 11 24H2 (build 26100) is required for IncludeSecondaryWindows. -->
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>10.0.26100.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>

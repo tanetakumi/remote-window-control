@@ -78,6 +78,7 @@ Keep-alive requests a 1920×1080 session display. If it disconnects, including w
 
 ## Troubleshooting
 
+- **Windows version:** Windows 11 24H2 (build 26100) or later x64 is required. The installer and ZIP host reject older builds; the startup log includes the detected build.
 - **The host will not start:** check `logs\share-host.log` for configuration, credential, or port errors.
 - **The phone cannot open the page:** check the listen address, the PC's IP address, and the firewall rule's subnet and Private network profile.
 - **The page opens but video will not connect:** the browser must support VP9 profile 0, and the devices must have a network path for WebRTC media as well as HTTP.

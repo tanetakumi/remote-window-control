@@ -9,7 +9,7 @@ Control a Windows application window from your phone or tablet. Share App stream
 
 ## Get started
 
-You need **Windows 11 x64** and a phone or tablet browser with **WebRTC VP9** support. FFmpeg and the .NET runtime are included.
+You need **Windows 11 24H2 (build 26100 or later) x64** and a phone or tablet browser with **WebRTC VP9** support. FFmpeg and the .NET runtime are included.
 
 1. Download `ShareApp-<version>-Setup.exe` from [Releases](https://github.com/tanetakumi/remote-window-control/releases) and run it. Installation is for the current Windows user and needs no administrator privileges.
 2. Start **Share App** from the Start Menu. Its icon appears in the notification area beside the clock.

@@ -64,7 +64,7 @@ $checksums = foreach ($name in @($installerName, $zipName, $sourceName)) {
 }
 [IO.File]::WriteAllLines((Join-Path $output 'SHA256SUMS.txt'), $checksums, [Text.UTF8Encoding]::new($false))
 $notes = @"
-Share App $Version for Windows 11 x64.
+Share App $Version for Windows 11 24H2 (build 26100 or later) x64.
 
 - $installerName installs for the current user into %LOCALAPPDATA%\Programs\ShareApp without requesting administrator privileges.
 - $zipName can be extracted and run without installation.
@@ -74,7 +74,7 @@ Share App $Version for Windows 11 x64.
 
 Settings, logs, and RDP credentials remain in %LOCALAPPDATA%\ShareApp and are preserved on upgrade and uninstall. Exit the app from the notification area before upgrading or uninstalling.
 
-See the README for setup and configuration. Before publishing this draft, confirm launch and VP9 streaming on Windows 11.
+See the README for setup and configuration. Before publishing this draft, confirm launch and VP9 streaming on Windows 11 24H2 or later.
 "@
 [IO.File]::WriteAllText((Join-Path $output 'RELEASE-NOTES.md'), $notes, [Text.UTF8Encoding]::new($false))
 Write-Host "Installer, ZIP, sources and checksums ready: $output"

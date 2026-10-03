@@ -48,6 +48,15 @@ func run() error {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
 	log.SetPrefix(fmt.Sprintf("pid=%d ", os.Getpid()))
 	log.Printf("host starting executable=%q platform=%s/%s runtime=%s", exe, runtime.GOOS, runtime.GOARCH, runtime.Version())
+	build, err := win32.BuildNumber()
+	if err == nil {
+		err = win32.CheckBuild(build)
+	}
+	if err != nil {
+		log.Printf("unsupported OS: %v", err)
+		return err
+	}
+	log.Printf("Windows build=%d", build)
 	log.Printf("user data directory=%q", dataDir)
 	cfg, err := config.Load(dataDir)
 	if err != nil {

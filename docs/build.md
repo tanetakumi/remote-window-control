@@ -47,4 +47,4 @@ The **Build** workflow uses the same scripts:
 - Manual runs also package and test the installer. Download the `share-app-windows-packages` artifact for the results.
 - Pushing a new `v<major>.<minor>.<patch>` tag also creates a draft GitHub Release with the packages. Prerelease suffixes are supported.
 
-Confirm launch and actual screen sharing on Windows 11 before publishing the draft. Actions artifacts expire after 14 days; published Releases provide lasting downloads. Keep the corresponding FFmpeg source archive available alongside its binaries.
+Confirm launch and actual screen sharing on Windows 11 24H2 or later before publishing the draft. Actions artifacts expire after 14 days; published Releases provide lasting downloads. Keep the corresponding FFmpeg source archive available alongside its binaries.
