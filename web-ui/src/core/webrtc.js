@@ -10,7 +10,7 @@ function makeSignalingUrl() {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-export function createRemoteConnection({ videoElement, onStatus, onNotice, onInputError, onBitrate, onDisconnect, signal, getInitialViewport }) {
+export function createRemoteConnection({ videoElement, onStatus, onNotice, onInputError, onBitrate, onDisconnect, onInputMode, signal, getInitialViewport }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error("Connection cancelled.")); return; }
     const peer = new RTCPeerConnection();
@@ -23,6 +23,10 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
     let hasVideoFrame = false;
     let statsTimer;
     let graceTimer;
+    let modeTimer;
+    let inputMode = "window";
+    let switching = false;
+    let requestedMode;
     let statsIntervalMs = 0;
     let lastBitrate;
     let lastReport;
@@ -45,6 +49,7 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
       window.clearTimeout(waitingTimer);
       window.clearTimeout(statsTimer);
       window.clearTimeout(graceTimer);
+      window.clearTimeout(modeTimer);
       videoElement.removeEventListener("loadeddata", onVideoFrame);
       signal?.removeEventListener("abort", onAbort);
       peer.ontrack = peer.onicecandidate = peer.onconnectionstatechange = null;
@@ -72,6 +77,7 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
       if (!ready || closed) return;
       if (condition.reconnecting) status("connecting", "Reconnecting…");
       else if (condition.inputDelayed) status("connecting", "Input delayed…");
+      else if (switching) status("connecting", `Switching to ${requestedMode === "pc" ? "PC" : "Window"} mode…`);
       else status("connected", "Connected");
     }
 
@@ -97,8 +103,20 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
 
     const remote = {
       close,
+      get inputMode() { return inputMode; },
+      setInputMode(mode) {
+        if (closed || !ready || switching || !["window", "pc"].includes(mode)) return false;
+        // The sender flushes pending moves/scrolls ahead of this request.
+        if (!input.send({ type: "input.mode", mode })) return false;
+        switching = true;
+        requestedMode = mode;
+        modeTimer = window.setTimeout(() => fail(new Error("Input mode switch timed out. Select a window to reconnect.")), 15000);
+        onInputMode?.(inputMode, switching);
+        renderStatus();
+        return true;
+      },
       sendControl(payload) {
-        if (closed || !ready) return false;
+        if (closed || !ready || switching) return false;
         return input.send(payload);
       },
     };
@@ -111,6 +129,7 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
       window.clearTimeout(waitingTimer);
       renderStatus();
       if (onBitrate || statsIntervalMs > 0) pollStats();
+      onInputMode?.(inputMode, switching);
       resolve(remote);
     }
 
@@ -176,7 +195,17 @@ export function createRemoteConnection({ videoElement, onStatus, onNotice, onInp
         const message = JSON.parse(event.data);
         if (message.type === "error") throw new Error(message.message || "Host connection failed.");
         if (message.type === "input.error") { onInputError?.(message.message || "The host could not apply the input."); return; }
-        if (message.type === "session.config") {
+        if (message.type === "input.mode") {
+          if (!["window", "pc"].includes(message.mode) || (switching && message.mode !== requestedMode)) {
+            throw new Error("Invalid input mode confirmation from host.");
+          }
+          window.clearTimeout(modeTimer);
+          inputMode = message.mode;
+          switching = false;
+          requestedMode = undefined;
+          onInputMode?.(inputMode, switching);
+          renderStatus();
+        } else if (message.type === "session.config") {
           statsIntervalMs = message.statsIntervalMs > 0 ? message.statsIntervalMs : 0;
         } else if (message.type === "webrtc.answer") {
           await peer.setRemoteDescription({ type: "answer", sdp: message.sdp });

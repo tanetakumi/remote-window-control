@@ -47,8 +47,8 @@ export function attachViewportSync(sendControl, options = {}) {
       return;
     }
 
-    lastPayload = payload;
-    sendControl(payload);
+    // Rejected input during mode switching must be retried after confirmation.
+    if (sendControl(payload) !== false) lastPayload = payload;
   };
 
   const scheduleViewportSync = () => {

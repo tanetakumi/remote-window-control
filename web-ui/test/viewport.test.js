@@ -45,3 +45,23 @@ test("editor height changes are suspended, closing refreshes size, and rotation 
   t.mock.timers.tick(2000);
   assert.equal(sent.length, count);
 });
+
+test("viewport rejected during mode switching is retried after confirmation", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  globalThis.window = Object.assign(new EventTarget(), { setTimeout, clearTimeout, innerWidth: 375, innerHeight: 667, devicePixelRatio: 1 });
+  globalThis.document = new EventTarget();
+  globalThis.screen = {};
+  globalThis.cancelAnimationFrame = () => {};
+  let switching = true;
+  const accepted = [];
+  const viewport = attachViewportSync(c => { if (switching) return false; accepted.push(c); return true; });
+  t.after(() => viewport.cleanup());
+  assert.equal(accepted.length, 0);
+  switching = false;
+  viewport.refresh();
+  t.mock.timers.tick(120);
+  assert.equal(accepted.length, 1);
+  viewport.refresh();
+  t.mock.timers.tick(120);
+  assert.equal(accepted.length, 1);
+});

@@ -89,15 +89,15 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7M5 12h14"/></svg>
           </button>
           <div class="status-group">
-            <div id="status-pill" data-state="connecting" role="status" aria-live="polite" aria-atomic="true" title="Connecting…">
-              <svg class="status-connecting" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-8-8"/></svg>
-              <svg class="status-connected" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
-              <svg class="status-error" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
-              <span id="status-message" class="sr-only">Connecting…</span>
-            </div>
-            <div id="bitrate-pill" hidden aria-label="Video bitrate"></div>
+            <span id="status-message" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Connecting…</span>
+            <div id="bitrate-pill" hidden><span class="bitrate-value"></span><span class="bitrate-unit">kbps</span></div>
           </div>
           <div id="top-bar-actions">
+            <button id="input-mode-button" type="button" aria-label="PC control: off. Switch to PC mode" aria-pressed="false" title="Switch to PC mode" disabled>
+              <svg class="input-window-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M6 6.5h.01M9 6.5h.01"/></svg>
+              <svg class="input-pc-icon" viewBox="0 0 24 24" aria-hidden="true" hidden><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              <span class="mode-label">Window</span>
+            </button>
             <div id="touch-mode" role="group" aria-label="Input mode">
               <button type="button" data-mode="direct" aria-label="Tap mode: touch the screen directly" aria-pressed="false" title="Tap: touch the screen directly" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -166,7 +166,7 @@
               </button>
             </div>
           </div>
-          <div id="remote-notice" role="status" hidden>
+          <div id="remote-notice" hidden>
             <span id="remote-notice-message"></span>
             <button id="dismiss-notice" class="dismiss-button" type="button" aria-label="Dismiss message">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>

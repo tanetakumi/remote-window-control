@@ -613,57 +613,12 @@ body {
   flex: 1;
 }
 
-/* Fixed-size connection indicator; text remains available to screen readers. */
-#status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  background: rgba(30, 41, 59, 0.7);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
-  color: var(--color-amber);
-}
-
-#status-pill svg {
-  display: none;
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-#status-pill[data-state="connecting"] .status-connecting,
-#status-pill[data-state="connected"] .status-connected,
-#status-pill[data-state="error"] .status-error {
-  display: block;
-}
-
-#status-pill[data-state="connecting"] .status-connecting {
-  animation: status-spin 1.2s linear infinite;
-}
-
-#status-pill[data-state="connected"] {
-  color: var(--color-emerald);
-}
-
-#status-pill[data-state="error"] {
-  color: var(--color-rose);
-}
-
-@keyframes status-spin {
-  to { transform: rotate(360deg); }
-}
-
 #bitrate-pill {
-  min-width: 0;
-  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+  flex: 0 0 auto;
   padding: 4px 6px;
   white-space: nowrap;
   overflow: hidden;
@@ -680,6 +635,23 @@ body {
 #bitrate-pill[hidden] {
   display: none;
 }
+
+/* Fixed digit width, so the 1 s updates do not move the buttons. */
+#bitrate-pill .bitrate-value { min-width: 4ch; text-align: center; }
+#bitrate-pill .bitrate-unit { font-size: 0.6rem; }
+
+#input-mode-button {
+  gap: 6px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  touch-action: manipulation;
+}
+
+#input-mode-button .mode-label { min-width: 3.75em; text-align: center; }
+#input-mode-button svg[hidden] { display: none; }
+#input-mode-button:disabled { opacity: 0.5; cursor: default; }
+#input-mode-button[aria-pressed="true"] { background: var(--control-active); }
 
 #top-bar-actions {
   display: flex;
@@ -805,15 +777,31 @@ body {
 }
 
 @media (max-width: 480px) {
-  #touch-mode .mode-label {
+  #touch-mode .mode-label, #input-mode-button .mode-label {
     display: none;
   }
 }
 
-@media (max-width: 360px) {
-  #bitrate-pill {
-    display: none;
+@media (min-width: 481px) and (max-width: 600px) {
+  #top-bar {
+    gap: 4px;
+    padding-left: calc(env(safe-area-inset-left, 0px) + 8px);
+    padding-right: calc(env(safe-area-inset-right, 0px) + 8px);
   }
+}
+
+@media (max-width: 360px) {
+  #top-bar {
+    gap: 4px;
+    padding-left: calc(env(safe-area-inset-left, 0px) + 4px);
+    padding-right: calc(env(safe-area-inset-right, 0px) + 4px);
+  }
+  #top-bar-actions { gap: 4px; }
+  #touch-mode button { padding: 0 8px; }
+}
+
+@media (max-width: 340px) {
+  #top-bar { gap: 2px; }
 }
 
 #top-bar #keyboard-button[aria-expanded="true"] {

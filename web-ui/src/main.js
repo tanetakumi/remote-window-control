@@ -1,4 +1,6 @@
 import "./styles.css";
+import { renderInputMode } from "./ui/input-mode.js";
+import { createNotices } from "./ui/notices.js";
 
 import {
   fetchWindows, setTargetWindow, fetchKeepalive, setKeepalive, fetchSettings, saveSettings,
@@ -20,9 +22,10 @@ const waitingElement = document.querySelector("#video-waiting");
 const videoStageElement = document.querySelector("#video-stage");
 const touchCursorElement = document.querySelector("#touch-cursor");
 const touchModeElement = document.querySelector("#touch-mode");
-const statusElement = document.querySelector("#status-pill");
+const inputModeButton = document.querySelector("#input-mode-button");
 const statusMessageElement = document.querySelector("#status-message");
 const bitrateElement = document.querySelector("#bitrate-pill");
+const bitrateValue = bitrateElement.querySelector(".bitrate-value");
 const keyboardButton = document.querySelector("#keyboard-button");
 const specialKeysButton = document.querySelector("#special-keys-button");
 const textDialog = document.querySelector("#text-dialog");
@@ -34,6 +37,10 @@ const settingsButton = document.querySelector("#settings-button");
 const keepaliveButton = document.querySelector("#keepalive-button");
 const keepaliveDot = document.querySelector("#keepalive-dot");
 
+const notices = createNotices((message) => {
+  noticeMessage.textContent = message;
+  noticeElement.hidden = !message;
+});
 let connecting = false;
 let keepaliveBusy = false;
 let cleanupRemote = () => {};
@@ -132,13 +139,12 @@ function setWindowListEnabled(enabled) {
 
 function setStatus(state, message) {
   statusMessageElement.textContent = message;
-  statusElement.title = message;
-  statusElement.dataset.state = state;
+  notices.transient(state === "connecting" ? message : "");
 }
 
 function showNotice(message) {
-  noticeMessage.textContent = message;
-  noticeElement.hidden = false;
+  statusMessageElement.textContent = message;
+  notices.show(message);
 }
 
 function setSelectStatus(message, isError = false) {
@@ -190,7 +196,8 @@ async function startRemoteControl() {
   connectionAbort?.abort();
   connectionAbort = new AbortController();
   waitingElement.hidden = false;
-  noticeElement.hidden = true;
+  notices.reset();
+  renderInputMode(inputModeButton);
   keyboardButton.disabled = true;
   specialKeysButton.disabled = true;
   setStatus("connecting", "Connecting…");
@@ -201,6 +208,10 @@ async function startRemoteControl() {
     signal: connectionAbort.signal,
     videoElement,
     onStatus: setStatus,
+    onInputMode: (mode, switching) => {
+      renderInputMode(inputModeButton, mode, switching, true);
+      if (!switching) viewport?.refresh();
+    },
     onNotice: showNotice,
     onInputError: (message) => {
       showNotice(message);
@@ -208,13 +219,13 @@ async function startRemoteControl() {
     },
     onDisconnect: (error) => returnToWindows(error.message, true),
     onBitrate: (kbps) => {
-      bitrateElement.textContent = `${kbps} kbps`;
-      bitrateElement.title = `${kbps} kbps`;
-      bitrateElement.setAttribute("aria-label", `Video bitrate: ${kbps} kbps`);
+      bitrateValue.textContent = String(kbps);
       bitrateElement.hidden = false;
     },
   });
   waitingElement.hidden = true;
+  const switchMode = () => remote.setInputMode(remote.inputMode === "pc" ? "window" : "pc");
+  inputModeButton.addEventListener("click", switchMode);
   const releaseTouch = attachTouchControlsUI({
     videoElement,
     stageElement: videoStageElement,
@@ -257,6 +268,8 @@ async function startRemoteControl() {
     targetElement: videoStageElement,
   });
   cleanupRemote = () => {
+    inputModeButton.removeEventListener("click", switchMode);
+    renderInputMode(inputModeButton);
     releaseTouch();
     specialKeys.cleanup();
     keyboard.cleanup();
@@ -282,7 +295,7 @@ videoElement.addEventListener("click", () =>
 );
 
 document.querySelector("#dismiss-notice").addEventListener("click", () => {
-  noticeElement.hidden = true;
+  notices.dismiss();
 });
 
 document.querySelector("#windows-button").addEventListener("click", () => {

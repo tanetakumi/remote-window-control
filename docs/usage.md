@@ -22,7 +22,13 @@ A private network such as Tailscale can also provide connectivity. An authentica
 
 Choose relative-pointer gestures or direct tapping to control the selected window. Use the text editor to send text and the special-key palette for keyboard commands.
 
-Sending text replaces the PC's clipboard and pastes it with Ctrl+V into the selected window, bringing that window to the foreground. Each send supports up to 16 KiB of text.
+The **Window / PC** button switches control modes without reconnecting. Each connection starts in **Window**, which uses the existing window-message input. **PC** includes menus and popups in the video and uses the PC’s real cursor and keyboard focus. Gesture settings, cursor position and the text draft are retained. Input pauses until the host confirms the first sample from the new capture.
+
+When entering PC mode, other application windows are minimized and the selected window is restored and brought forward. Existing menus may close; menus opened afterward keep their focus, including when text is pasted into them. Minimized windows are left that way when you switch back or disconnect; use **Win+Shift+M** on the PC to restore them. Returning to Window mode brings the main window forward and may close popups.
+
+Popups are clipped at the shared window’s boundary. PC control shares input with anyone using the PC, and cannot inject input into applications running as administrator. If another window covers a pointer press or scroll position, the input is rejected and a notice appears. A window can still move between this check and injection. Switching briefly pauses video; a few old frames may arrive after confirmation.
+
+Sending text replaces the PC's clipboard and pastes it with Ctrl+V. Window mode brings the selected window to the foreground; PC mode retains focus on its popup if one is already active. Each send supports up to 16 KiB of text.
 
 ## Settings and logs
 
