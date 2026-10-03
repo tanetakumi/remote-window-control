@@ -5,8 +5,8 @@ import "time"
 const (
 	swShowNoActivate = 4
 
-	// restoreTimeout bounds how long RestoreMinimized waits for the window to
-	// leave the minimized state; restoreAsync only queues the request.
+	// These bound the wait for asynchronous window restoration, from either
+	// minimized or maximized, before capture or sizing can continue.
 	restoreTimeout = time.Second
 	restorePoll    = 20 * time.Millisecond
 )

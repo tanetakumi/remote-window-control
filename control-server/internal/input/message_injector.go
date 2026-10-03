@@ -149,6 +149,14 @@ func (m *MessageInjector) ResizeViewport(c Command) error {
 	} else if restored {
 		log.Printf("viewport resize restored minimized window hwnd=%d", hwnd)
 	}
+	// Otherwise a maximized window keeps that state at the new size and is
+	// maximized again when restored from minimized.
+	if left, err := win32.LeaveMaximized(hwnd); err != nil {
+		log.Printf("viewport resize unmaximize failed hwnd=%d: %v", hwnd, err)
+		return err
+	} else if left {
+		log.Printf("viewport resize left maximized state hwnd=%d", hwnd)
+	}
 	if err := win32.ResizeClient(hwnd, width, height); err != nil {
 		log.Printf("viewport resize failed hwnd=%d: %v", hwnd, err)
 		return err
