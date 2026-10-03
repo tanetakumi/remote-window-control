@@ -24,7 +24,7 @@ func TestLoadedSettingsPersistInTheUserDataDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := config.Settings{FPS: 15, CRF: 20, MaxScale: 1.5}
+	saved := config.Settings{FPS: 15, CRF: 20, MaxScale: 1.5, ScrollSensitivity: 2.5}
 	if err := cfg.Settings.Set(saved); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestMissingSettingsFileCreatesTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := store.Get(), (config.Settings{FPS: 8, CRF: 31, MaxScale: 2}); got != want {
+	if got, want := store.Get(), (config.Settings{FPS: 8, CRF: 31, MaxScale: 2, ScrollSensitivity: 1}); got != want {
 		t.Fatalf("settings = %+v, want %+v", got, want)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -57,7 +57,7 @@ func TestSavedSettingsSurviveReopening(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := config.Settings{FPS: 15, CRF: 20, MaxScale: 1.5}
+	saved := config.Settings{FPS: 15, CRF: 20, MaxScale: 1.5, ScrollSensitivity: 2.5}
 	if err := store.Set(saved); err != nil {
 		t.Fatal(err)
 	}
@@ -88,14 +88,19 @@ func TestInvalidSettingsAreRejectedAndNotSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, bad := range []config.Settings{
-		{FPS: 0, CRF: 31, MaxScale: 2},
-		{FPS: 31, CRF: 31, MaxScale: 2},
-		{FPS: 8, CRF: -1, MaxScale: 2},
-		{FPS: 8, CRF: 64, MaxScale: 2},
-		{FPS: 8, CRF: 31, MaxScale: 0},
-		{FPS: 8, CRF: 31, MaxScale: 0.25},
-		{FPS: 8, CRF: 31, MaxScale: 4.5},
-		{FPS: 8, CRF: 31, MaxScale: math.NaN()},
+		{FPS: 0, CRF: 31, MaxScale: 2, ScrollSensitivity: 1},
+		{FPS: 31, CRF: 31, MaxScale: 2, ScrollSensitivity: 1},
+		{FPS: 8, CRF: -1, MaxScale: 2, ScrollSensitivity: 1},
+		{FPS: 8, CRF: 64, MaxScale: 2, ScrollSensitivity: 1},
+		{FPS: 8, CRF: 31, MaxScale: 0, ScrollSensitivity: 1},
+		{FPS: 8, CRF: 31, MaxScale: 0.25, ScrollSensitivity: 1},
+		{FPS: 8, CRF: 31, MaxScale: 4.5, ScrollSensitivity: 1},
+		{FPS: 8, CRF: 31, MaxScale: math.NaN(), ScrollSensitivity: 1},
+		{FPS: 8, CRF: 31, MaxScale: 2, ScrollSensitivity: 0},
+		{FPS: 8, CRF: 31, MaxScale: 2, ScrollSensitivity: 0.25},
+		{FPS: 8, CRF: 31, MaxScale: 2, ScrollSensitivity: 4.5},
+		{FPS: 8, CRF: 31, MaxScale: 2, ScrollSensitivity: math.NaN()},
+		{FPS: 8, CRF: 31, MaxScale: 2, ScrollSensitivity: math.Inf(1)},
 	} {
 		if err := store.Set(bad); !errors.Is(err, config.ErrInvalidSettings) {
 			t.Fatalf("Set(%+v) = %v, want ErrInvalidSettings", bad, err)
@@ -125,7 +130,7 @@ func TestFailedSaveKeepsTheCurrentSettings(t *testing.T) {
 	if err := os.WriteFile(dir, []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	err = store.Set(config.Settings{FPS: 12, CRF: 31, MaxScale: 2})
+	err = store.Set(config.Settings{FPS: 12, CRF: 31, MaxScale: 2, ScrollSensitivity: 1})
 	if err == nil || errors.Is(err, config.ErrInvalidSettings) {
 		t.Fatalf("Set = %v, want a write error", err)
 	}
@@ -143,7 +148,7 @@ func TestSettingsFileFieldsDefaultWhenOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := store.Get(), (config.Settings{FPS: 12, CRF: 31, MaxScale: 2}); got != want {
+	if got, want := store.Get(), (config.Settings{FPS: 12, CRF: 31, MaxScale: 2, ScrollSensitivity: 1}); got != want {
 		t.Fatalf("settings = %+v, want %+v", got, want)
 	}
 }
@@ -155,6 +160,8 @@ func TestBadSettingsFileFailsAndNamesTheFile(t *testing.T) {
 		"fps range":            `{"fps": 99}`,
 		"crf range":            `{"crf": 64}`,
 		"scale range":          `{"maxScale": 5}`,
+		"scroll zero":          `{"scrollSensitivity": 0}`,
+		"scroll range":         `{"scrollSensitivity": 5}`,
 		"null":                 `null`,
 		"trailing object":      `{} {}`,
 		"trailing garbage":     `{} broken`,
@@ -169,6 +176,30 @@ func TestBadSettingsFileFailsAndNamesTheFile(t *testing.T) {
 		}
 		if _, err := config.OpenSettings(path); err == nil || !strings.Contains(err.Error(), path) {
 			t.Fatalf("%s: error = %v, want one naming %s", name, err, path)
+		}
+	}
+}
+
+func TestLegacySettingsFileDefaultsScrollSensitivity(t *testing.T) {
+	path := settingsPath(t)
+	if err := os.WriteFile(path, []byte(`{"listenAddr":":9000","captureStats":"on","fps":12,"crf":24,"maxScale":1.5}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := config.OpenSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get().ScrollSensitivity; got != 1 {
+		t.Fatalf("legacy scroll sensitivity = %g, want 1", got)
+	}
+}
+
+func TestScrollSensitivityRangeIncludesBothEndpoints(t *testing.T) {
+	for _, sensitivity := range []float64{0.5, 4} {
+		settings := config.DefaultSettings()
+		settings.ScrollSensitivity = sensitivity
+		if err := settings.Validate(); err != nil {
+			t.Fatalf("sensitivity %g: %v", sensitivity, err)
 		}
 	}
 }

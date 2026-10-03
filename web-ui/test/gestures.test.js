@@ -28,7 +28,7 @@ const tap = (video, point = finger(25, 75)) => {
   touch(video, "touchend", [], [point]);
 };
 
-function setup(t, mode = "relative") {
+function setup(t, mode = "relative", options = {}) {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1000 });
   const view = new EventTarget();
   view.setTimeout = (...args) => setTimeout(...args);
@@ -39,7 +39,7 @@ function setup(t, mode = "relative") {
   video.ownerDocument = doc;
   const sent = [], positions = [];
   const controls = attachGestureControls(video, (command) => sent.push(command), {
-    mode, onCursorChange: (point) => positions.push(point),
+    ...options, mode, onCursorChange: (point) => positions.push(point),
   });
   t.after(() => controls.cleanup());
   return { video, view, doc, sent, positions, controls };
@@ -162,11 +162,47 @@ test("fractional scroll movements accumulate into whole Windows wheel units", (t
   assert.equal(sent.some((c) => c.deltaX !== undefined), false);
 });
 
-test("pinch and third-finger gestures send neither wheel input nor stray taps", (t) => {
+for (const mode of ["direct", "relative"]) {
+  test(`${mode}: finger separation changes never stop two-finger scrolling`, (t) => {
+    const { video, sent } = setup(t, mode);
+    touch(video, "touchstart", [finger(30, 80), finger(70, 80, 2)]);
+    touch(video, "touchmove", [finger(30, 60), finger(70, 60, 2)]);
+    touch(video, "touchmove", [finger(20, 40), finger(80, 40, 2)]);
+    touch(video, "touchmove", [finger(30, 20), finger(70, 20, 2)]);
+    touch(video, "touchend", [], [finger(30, 20), finger(70, 20, 2)]);
+    assert.deepEqual(sent.map((c) => [c.type, c.deltaY]), [
+      ["input.scroll", 0.2], ["input.scroll", 0.2], ["input.scroll", 0.2],
+    ]);
+  });
+
+  for (const sensitivity of [0.5, 2, 4]) {
+    test(`${mode}: ${sensitivity}x sensitivity scales two-finger scrolling`, (t) => {
+      const { video, sent } = setup(t, mode, { scrollSensitivity: sensitivity });
+      touch(video, "touchstart", [finger(30, 80), finger(70, 80, 2)]);
+      touch(video, "touchmove", [finger(30, 60), finger(70, 60, 2)]);
+      touch(video, "touchend", [], [finger(30, 60), finger(70, 60, 2)]);
+      assert.equal(sent.length, 1);
+      assert.equal(sent[0].deltaY, 0.2 * sensitivity);
+    });
+  }
+}
+
+test("sensitivity scales direct one-finger scrolling and preserves fractional movement", (t) => {
+  const { video, sent } = setup(t, "direct", { scrollSensitivity: 0.5 });
+  touch(video, "touchstart", [finger(50, 80)]);
+  touch(video, "touchmove", [finger(50, 70)]);
+  assert.equal(sent[0].deltaY, 0.05);
+  const initialUnits = sent.reduce((n, c) => n + Math.round(c.deltaY * 120), 0);
+  for (let i = 1; i <= 10; i++) touch(video, "touchmove", [finger(50, 70 - i / 5)]);
+  const units = sent.reduce((n, c) => n + Math.round(c.deltaY * 120), 0);
+  assert.equal(units - initialUnits, 1);
+});
+
+test("spreading fingers with a stationary center and third-finger gestures send no input", (t) => {
   const { video, sent } = setup(t);
   touch(video, "touchstart", [finger(40, 50), finger(60, 50, 2)]);
-  touch(video, "touchmove", [finger(20, 70), finger(80, 70, 2)]);
-  touch(video, "touchend", [], [finger(20, 70), finger(80, 70, 2)]);
+  touch(video, "touchmove", [finger(20, 50), finger(80, 50, 2)]);
+  touch(video, "touchend", [], [finger(20, 50), finger(80, 50, 2)]);
   touch(video, "touchstart", [finger(30, 30), finger(40, 40, 2), finger(50, 50, 3)]);
   touch(video, "touchend", [finger(30, 30)], [finger(40, 40, 2), finger(50, 50, 3)]);
   touch(video, "touchmove", [finger(50, 50)]);
@@ -275,7 +311,7 @@ test("a finger on another control cannot keep the video's contact sequence alive
   assert.deepEqual(sent, [{ type: "input.tap", button: "left", x: 0.5, y: 0.5 }]);
 });
 
-function setupUI(t, saved, failStorage = false) {
+function setupUI(t, saved, failStorage = false, options = {}) {
   const { video, view, sent, controls } = setup(t);
   controls.cleanup();
   const store = new Map(saved === undefined ? [] : [["share-app.touch-mode", saved]]);
@@ -294,7 +330,7 @@ function setupUI(t, saved, failStorage = false) {
   const pointerButton = new Element();
   pointerButton.dataset = { mode: "relative" };
   elements.modeElement.querySelectorAll = () => [tapButton, pointerButton];
-  const cleanup = attachTouchControlsUI(elements, (c) => sent.push(c));
+  const cleanup = attachTouchControlsUI(elements, (c) => sent.push(c), options);
   t.after(cleanup);
   return { ...elements, tapButton, pointerButton, view, store, sent, cleanup };
 }
@@ -325,6 +361,17 @@ test("mode segments restore and select modes, save the preference, and change cu
   assert.equal(ui.pointerButton.disabled, true);
   emit(ui.pointerButton, "click");
   assert.equal(ui.store.get("share-app.touch-mode"), "direct");
+});
+
+test("configured sensitivity reaches both touch UI modes", (t) => {
+  const ui = setupUI(t, "direct", false, { scrollSensitivity: 2 });
+  for (const button of [ui.tapButton, ui.pointerButton]) {
+    emit(button, "click");
+    touch(ui.videoElement, "touchstart", [finger(30, 80), finger(70, 80, 2)]);
+    touch(ui.videoElement, "touchmove", [finger(30, 60), finger(70, 60, 2)]);
+    touch(ui.videoElement, "touchend", [], [finger(30, 60), finger(70, 60, 2)]);
+  }
+  assert.deepEqual(ui.sent.map((c) => [c.type, c.deltaY]), [["input.scroll", 0.4], ["input.scroll", 0.4]]);
 });
 
 for (const failStorage of [false, true]) {

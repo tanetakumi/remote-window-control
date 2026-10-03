@@ -32,7 +32,7 @@ Sending text replaces the PC's clipboard and pastes it with Ctrl+V. Window mode 
 
 ## Settings and logs
 
-The gear button beside **Refresh** changes video settings. They are shared by all devices and saved in `%LOCALAPPDATA%\ShareApp\config.json`:
+The gear button beside **Refresh** changes video settings and scroll sensitivity. They are shared by all devices and saved in `%LOCALAPPDATA%\ShareApp\config.json`:
 
 ```json
 {
@@ -40,7 +40,8 @@ The gear button beside **Refresh** changes video settings. They are shared by al
   "captureStats": "off",
   "fps": 8,
   "crf": 31,
-  "maxScale": 2
+  "maxScale": 2,
+  "scrollSensitivity": 1
 }
 ```
 
@@ -51,8 +52,9 @@ The gear button beside **Refresh** changes video settings. They are shared by al
 | `fps` | Video frame rate, 1–30. Changes apply to the next connection. |
 | `crf` | VP9 quality, 0–63. Lower values are sharper and use more bandwidth. Changes apply to the next connection. |
 | `maxScale` | Window pixels per browser CSS pixel, limited to 0.5–4. Lower values make the shared window smaller and reduce video data. Changes apply to the next connection or viewport change. |
+| `scrollSensitivity` | Touch scroll multiplier, 0.5–4 (default 1). Applies to both direct and cursor modes. At 1×, 100 CSS pixels of vertical finger travel equal one wheel notch; at 2×, 50 pixels do. Changes apply to the next connection. |
 
-The browser saves the three video settings while preserving `listenAddr` and `captureStats`. To edit the file directly, exit Share App first and restart it afterward. Invalid configuration prevents startup.
+The browser saves these settings while preserving `listenAddr` and `captureStats`. To edit the file directly, exit Share App first and restart it afterward. Invalid configuration prevents startup.
 
 Right-click the notification icon and choose **Open data folder** to find settings and logs. The log file is `logs\share-host.log` in that folder. Installed, portable, and development builds use the same user data location.
 

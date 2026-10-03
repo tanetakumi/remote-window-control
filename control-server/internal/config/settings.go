@@ -20,7 +20,7 @@ import (
 var ErrInvalidSettings = errors.New("invalid settings")
 
 // Settings are the values edited in the web client's settings page and kept in
-// the user's config.json. The API only reads and writes these video settings.
+// the user's config.json. The API only reads and writes these settings.
 type Settings struct {
 	// FPS is the video encode rate while the window changes, minFPS to maxFPS.
 	// A new value applies to the next connection.
@@ -34,11 +34,14 @@ type Settings struct {
 	// lower value gives a smaller window and less video data. A new value
 	// applies from the next viewport change.
 	MaxScale float64 `json:"maxScale"`
+	// ScrollSensitivity multiplies touch scrolling in both gesture modes.
+	// A new value applies to the next connection.
+	ScrollSensitivity float64 `json:"scrollSensitivity"`
 }
 
 // DefaultSettings returns the settings used while config.json does not exist.
 func DefaultSettings() Settings {
-	return Settings{FPS: media.DefaultFPS, CRF: media.DefaultCRF, MaxScale: DefaultMaxScale}
+	return Settings{FPS: media.DefaultFPS, CRF: media.DefaultCRF, MaxScale: DefaultMaxScale, ScrollSensitivity: 1}
 }
 
 // StartupSettings are edited in config.json and apply after restarting the host.
@@ -79,6 +82,9 @@ func (s Settings) Validate() error {
 	}
 	if !(s.MaxScale >= minMaxScale && s.MaxScale <= maxMaxScale) {
 		return fmt.Errorf("%w: maxScale must be a number from %g to %g", ErrInvalidSettings, minMaxScale, maxMaxScale)
+	}
+	if !(s.ScrollSensitivity >= minScrollSensitivity && s.ScrollSensitivity <= maxScrollSensitivity) {
+		return fmt.Errorf("%w: scrollSensitivity must be a number from %g to %g", ErrInvalidSettings, minScrollSensitivity, maxScrollSensitivity)
 	}
 	return nil
 }
@@ -144,7 +150,7 @@ func (s *SettingsStore) Get() Settings {
 }
 
 // Startup returns the configuration read at startup, without exposing it to
-// the browser's video settings API.
+// the browser's settings API.
 func (s *SettingsStore) Startup() StartupSettings {
 	s.mu.Lock()
 	defer s.mu.Unlock()

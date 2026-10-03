@@ -4,7 +4,7 @@ import { attachGestureControls, DEFAULT_TOUCH_MODE, TOUCH_MODES } from "./gestur
 
 const STORAGE_KEY = "share-app.touch-mode";
 
-export function attachTouchControlsUI({ videoElement, stageElement, cursorElement, modeElement }, sendControl) {
+export function attachTouchControlsUI({ videoElement, stageElement, cursorElement, modeElement }, sendControl, options = {}) {
   const view = videoElement.ownerDocument.defaultView;
   const { listen, cleanup: removeListeners } = createListenerTracker();
   const modeButtons = [...modeElement.querySelectorAll("button[data-mode]")];
@@ -44,6 +44,7 @@ export function attachTouchControlsUI({ videoElement, stageElement, cursorElemen
   listen(videoElement, "touchstart", refreshGeometry, { passive: true });
   const gestures = attachGestureControls(videoElement, sendControl, {
     mode,
+    scrollSensitivity: options.scrollSensitivity,
     onCursorChange(point) { cursor = point; renderCursor(); },
   });
   for (const button of modeButtons) {

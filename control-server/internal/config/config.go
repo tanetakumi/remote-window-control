@@ -11,14 +11,16 @@ import (
 )
 
 const (
-	defaultAddr  = "127.0.0.1:8443"
-	settingsFile = "config.json"
-	minFPS       = 1
-	maxFPS       = 30
-	minCRF       = 0
-	maxCRF       = 63
-	minMaxScale  = 0.5
-	maxMaxScale  = 4.0
+	defaultAddr          = "127.0.0.1:8443"
+	settingsFile         = "config.json"
+	minFPS               = 1
+	maxFPS               = 30
+	minCRF               = 0
+	maxCRF               = 63
+	minMaxScale          = 0.5
+	maxMaxScale          = 4.0
+	minScrollSensitivity = 0.5
+	maxScrollSensitivity = 4.0
 )
 
 // DefaultMaxScale is Settings.MaxScale until it is changed.

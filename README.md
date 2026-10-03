@@ -24,7 +24,7 @@ Closing the browser leaves Share App running. Right-click its notification icon 
 
 ## Settings and help
 
-The gear button beside **Refresh** opens the video settings. Settings and logs are stored in `%LOCALAPPDATA%\ShareApp`; use **Open data folder** from the notification icon to find them.
+The gear button beside **Refresh** opens the video and scroll sensitivity settings. Settings and logs are stored in `%LOCALAPPDATA%\ShareApp`; use **Open data folder** from the notification icon to find them.
 
 - [Connection, configuration, RDP keep-alive, and troubleshooting](docs/usage.md)
 - [Build from source and create release packages](docs/build.md)

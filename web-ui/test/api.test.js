@@ -66,7 +66,7 @@ test("window loading preserves helper diagnostics and falls back on empty errors
 });
 
 test("settings are read and saved as JSON", async (t) => {
-  const settings = { fps: 12, crf: 24, maxScale: 1.5 };
+  const settings = { fps: 12, crf: 24, maxScale: 1.5, scrollSensitivity: 2.5 };
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
     calls.push({ url, options });

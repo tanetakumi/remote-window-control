@@ -201,6 +201,7 @@ async function startRemoteControl() {
   keyboardButton.disabled = true;
   specialKeysButton.disabled = true;
   setStatus("connecting", "Connecting…");
+  const { scrollSensitivity } = await fetchSettings();
   let keyboard;
   let viewport;
   const remote = await createRemoteConnection({
@@ -231,7 +232,7 @@ async function startRemoteControl() {
     stageElement: videoStageElement,
     cursorElement: touchCursorElement,
     modeElement: touchModeElement,
-  }, remote.sendControl);
+  }, remote.sendControl, { scrollSensitivity });
   const specialKeys = attachSpecialKeysPalette({
     buttonElement: specialKeysButton,
     paletteElement: document.querySelector("#special-keys-palette"),
@@ -314,6 +315,8 @@ const settings = attachSettingsScreen({
   crfValue: document.querySelector("#settings-crf-value"),
   scaleInput: document.querySelector("#settings-scale"),
   scaleValue: document.querySelector("#settings-scale-value"),
+  scrollInput: document.querySelector("#settings-scroll"),
+  scrollValue: document.querySelector("#settings-scroll-value"),
   saveButton: document.querySelector("#settings-save"),
   statusElement: document.querySelector("#settings-status"),
 }, { load: fetchSettings, save: saveSettings });

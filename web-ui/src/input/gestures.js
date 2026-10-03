@@ -14,7 +14,6 @@ const WHEEL_UNITS_PER_NOTCH = 120;
 const clientPoint = (touch) => ({ x: touch.clientX, y: touch.clientY });
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const center = ([a, b]) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
-const separation = ([a, b]) => distance(clientPoint(a), clientPoint(b));
 const clamp = (value) => Math.min(1, Math.max(0, value));
 // Contacts on the mode button or keyboard must not keep a video gesture alive.
 const contacts = (event) => Array.from(event.targetTouches ?? event.touches);
@@ -26,6 +25,7 @@ export function attachGestureControls(videoElement, sendControl, options = {}) {
   const doc = videoElement.ownerDocument;
   const { listen, cleanup: removeListeners } = createListenerTracker();
   const onCursorChange = options.onCursorChange ?? (() => {});
+  const scrollSensitivity = options.scrollSensitivity ?? 1;
   let mode = options.mode ?? DEFAULT_TOUCH_MODE;
   let cursor = { x: 0.5, y: 0.5 };
   let gesture = null;
@@ -83,7 +83,7 @@ export function attachGestureControls(videoElement, sendControl, options = {}) {
   };
 
   const scroll = (pixels) => {
-    scrollRemainder += pixels * WHEEL_UNITS_PER_NOTCH / PIXELS_PER_NOTCH;
+    scrollRemainder += pixels * scrollSensitivity * WHEEL_UNITS_PER_NOTCH / PIXELS_PER_NOTCH;
     const units = Math.trunc(scrollRemainder);
     if (!units) return;
     scrollRemainder -= units;
@@ -145,8 +145,8 @@ export function attachGestureControls(videoElement, sendControl, options = {}) {
       gesture = {
         kind: "two", starts: new Map(touches.map((t) => [t.identifier, clientPoint(t)])),
         startCenter: center(touches), lastCenter: center(touches),
-        startSeparation: separation(touches), startedAt, moved: false,
-        scrolling: false, pinching: false, ending: false, tapAllowed,
+        startedAt, moved: false,
+        scrolling: false, ending: false, tapAllowed,
       };
       releaseButton();
       // A failed button-release send can dispose the connection synchronously.
@@ -184,13 +184,7 @@ export function attachGestureControls(videoElement, sendControl, options = {}) {
     if (active.kind === "two" && touches.length === 2 && !active.ending) {
       updateTwoFingerTravel(touches, active);
       const current = center(touches);
-      // A pinch is not a remote wheel gesture. Suppress it for this contact
-      // sequence once the finger separation changes beyond tap tolerance.
-      if (Math.abs(separation(touches) - active.startSeparation) > TAP_SLOP_PX) {
-        active.pinching = true;
-        active.moved = true;
-      }
-      if (!active.pinching && (active.scrolling || distance(current, active.startCenter) > TAP_SLOP_PX)) {
+      if (active.scrolling || distance(current, active.startCenter) > TAP_SLOP_PX) {
         active.scrolling = true;
         active.moved = true;
         scroll(active.lastCenter.y - current.y);
