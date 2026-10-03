@@ -14,6 +14,7 @@ import (
 // Reply is a message the host sends over the signaling WebSocket.
 type Reply struct {
 	Type    string `json:"type"`
+	Mode    string `json:"mode"`
 	SDP     string `json:"sdp"`
 	Message string `json:"message"`
 }

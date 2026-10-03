@@ -157,7 +157,7 @@ func TestStreamingEncodesFramesAndShutsDownOnTargetChange(t *testing.T) {
 		changed := make(chan struct{})
 		done := runWindow(ctx, pipeline, 1, changed)
 
-		eventually(t, 10*time.Second, "the first encoded sample", func() bool { return sink.count() > 0 })
+		eventually(t, 10*time.Second, "the first encoded sample", func() bool { return sink.encoded() > 0 })
 
 		close(changed)
 		if err := receive(t, done, 4*time.Second, "streaming workers to stop after a target change"); err != nil {
@@ -182,5 +182,43 @@ func TestEncoderFailureIsReported(t *testing.T) {
 	}
 	if !source.stream(0).isClosed() {
 		t.Fatal("capture stream was not closed after the encoder failed")
+	}
+}
+
+func TestRestartChangesSourceOnSameTargetAndConfirmsFirstSampleOnce(t *testing.T) {
+	requireFFmpeg(t)
+	old, next := newFakeSource(stalled()), newFakeSource(steady(fakeFrameSize))
+	target := newFakeTarget()
+	target.Select(42)
+	sink := &recordingSink{}
+	pipeline := media.NewPipeline(old.source(), target, sink, defaultEncoder())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- pipeline.Run(ctx) }()
+	eventually(t, settle, "old source", func() bool { return len(old.openedHandles()) == 1 })
+	confirmed := make(chan int, 10)
+	pipeline.Restart(next.source(), func() { confirmed <- sink.encoded() })
+	count := receive(t, confirmed, 10*time.Second, "first sample confirmation")
+	if count == 0 {
+		t.Fatal("confirmed before writing sample")
+	}
+	if got := next.openedHandles(); !reflect.DeepEqual(got, []uint64{42}) {
+		t.Fatal(got)
+	}
+	if !old.stream(0).isClosed() {
+		t.Fatal("old capture not closed")
+	}
+	eventually(t, 3*time.Second, "more samples", func() bool { return sink.encoded() > count+1 })
+	select {
+	case <-confirmed:
+		t.Fatal("first sample confirmed twice")
+	default:
+	}
+	pipeline.Restart(old.source(), nil)
+	eventually(t, settle, "original source restarted", func() bool { return len(old.openedHandles()) == 2 })
+	cancel()
+	if err := receive(t, done, settle, "shutdown"); err != nil {
+		t.Fatal(err)
 	}
 }

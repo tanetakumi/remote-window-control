@@ -26,7 +26,7 @@ func TestMissingProbeIsReportedAsUnavailable(t *testing.T) {
 	if _, err := probe.CapturePNG(ctx, 1); !errors.Is(err, capture.ErrUnavailable) {
 		t.Errorf("CapturePNG error = %v", err)
 	}
-	if _, err := probe.OpenStream(ctx, 1); !errors.Is(err, capture.ErrUnavailable) {
+	if _, err := probe.OpenStream(ctx, 1, false); !errors.Is(err, capture.ErrUnavailable) {
 		t.Errorf("OpenStream error = %v", err)
 	}
 }
@@ -70,7 +70,7 @@ func TestOneShotCommandErrorsIncludeTheHelpersStderr(t *testing.T) {
 
 func TestStreamDeliversFramesAndClosesCleanly(t *testing.T) {
 	probe := capture.NewProbe(testutil.InstallFakeProbe(t), capture.StreamOptions{})
-	stream, err := probe.OpenStream(context.Background(), 1)
+	stream, err := probe.OpenStream(context.Background(), 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestStreamDeliversFramesAndClosesCleanly(t *testing.T) {
 func TestCloseUnblocksAStalledReadAndIsSafeToCallConcurrently(t *testing.T) {
 	t.Setenv(testutil.EnvStall, "1")
 	probe := capture.NewProbe(testutil.InstallFakeProbe(t), capture.StreamOptions{})
-	stream, err := probe.OpenStream(context.Background(), 1)
+	stream, err := probe.OpenStream(context.Background(), 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestCancellingTheContextStopsTheHelper(t *testing.T) {
 	t.Setenv(testutil.EnvStall, "1")
 	probe := capture.NewProbe(testutil.InstallFakeProbe(t), capture.StreamOptions{})
 	ctx, cancel := context.WithCancel(context.Background())
-	stream, err := probe.OpenStream(ctx, 1)
+	stream, err := probe.OpenStream(ctx, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestCancellingTheContextStopsTheHelper(t *testing.T) {
 func TestStreamErrorsIncludeTheHelpersStderr(t *testing.T) {
 	t.Setenv(testutil.EnvStreamFail, "1")
 	probe := capture.NewProbe(testutil.InstallFakeProbe(t), capture.StreamOptions{})
-	stream, err := probe.OpenStream(context.Background(), 1)
+	stream, err := probe.OpenStream(context.Background(), 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,20 +177,24 @@ func TestStreamErrorsIncludeTheHelpersStderr(t *testing.T) {
 
 func TestStreamOptionsArePassedToTheHelper(t *testing.T) {
 	cases := []struct {
-		name string
-		opts capture.StreamOptions
-		want []string
+		name      string
+		opts      capture.StreamOptions
+		secondary bool
+		want      []string
 	}{
-		{"none", capture.StreamOptions{}, nil},
-		{"stats", capture.StreamOptions{Stats: true}, []string{"--stats"}},
-		{"verify implies stats", capture.StreamOptions{Stats: true, VerifyStats: true}, []string{"--stats-verify"}},
+		{"none", capture.StreamOptions{}, false, nil},
+		{"stats", capture.StreamOptions{Stats: true}, false, []string{"--stats"}},
+		{"verify implies stats", capture.StreamOptions{VerifyStats: true}, false, []string{"--stats-verify"}},
+		{"secondary windows", capture.StreamOptions{}, true, []string{"--include-secondary-windows"}},
+		{"secondary windows and stats", capture.StreamOptions{Stats: true}, true, []string{"--stats", "--include-secondary-windows"}},
+		{"secondary windows and verification", capture.StreamOptions{VerifyStats: true}, true, []string{"--stats-verify", "--include-secondary-windows"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			argsFile := filepath.Join(t.TempDir(), "args")
 			t.Setenv(testutil.EnvArgsFile, argsFile)
 			probe := capture.NewProbe(testutil.InstallFakeProbe(t), c.opts)
-			stream, err := probe.OpenStream(context.Background(), 5)
+			stream, err := probe.OpenStream(context.Background(), 5, c.secondary)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -210,6 +214,49 @@ func TestStreamOptionsArePassedToTheHelper(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSecondaryWindowsApplyOnlyToTheRequestedStream(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	t.Setenv(testutil.EnvArgsFile, argsFile)
+	probe := capture.NewProbe(testutil.InstallFakeProbe(t), capture.StreamOptions{})
+	ctx := context.Background()
+	assertArgs := func(want string) {
+		t.Helper()
+		data, err := os.ReadFile(argsFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != want {
+			t.Fatalf("args = %q, want %q", data, want)
+		}
+	}
+	for _, secondary := range []bool{true, false} {
+		stream, err := probe.OpenStream(ctx, 5, secondary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := stream.ReadFrameInto(nil); err != nil {
+			_ = stream.Close()
+			t.Fatal(err)
+		}
+		if err := stream.Close(); err != nil {
+			t.Fatal(err)
+		}
+		want := "--stream\n--hwnd\n5"
+		if secondary {
+			want += "\n--include-secondary-windows"
+		}
+		assertArgs(want)
+	}
+	if _, err := probe.CapturePNG(ctx, 5); err != nil {
+		t.Fatal(err)
+	}
+	assertArgs("--hwnd\n5\n--stdout-png")
+	if _, err := probe.ListWindows(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertArgs("--list")
 }
 
 func TestOneShotCommandsIgnoreStreamOptions(t *testing.T) {

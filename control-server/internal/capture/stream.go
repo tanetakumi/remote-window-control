@@ -28,13 +28,17 @@ type Stream struct {
 }
 
 // OpenStream starts a helper streaming the window with the given handle. The
-// helper stops when ctx is cancelled or Close is called.
-func (p *Probe) OpenStream(ctx context.Context, handle uint64) (*Stream, error) {
+// helper stops when ctx is cancelled or Close is called. includeSecondaryWindows
+// applies only to this stream; window enumeration and PNG captures are unaffected.
+func (p *Probe) OpenStream(ctx context.Context, handle uint64, includeSecondaryWindows bool) (*Stream, error) {
 	if err := p.check(); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	args := append([]string{"--stream", "--hwnd", fmt.Sprint(handle)}, p.stream.args()...)
+	if includeSecondaryWindows {
+		args = append(args, "--include-secondary-windows")
+	}
 	command := exec.CommandContext(ctx, p.path, args...)
 	win32.HideConsole(command)
 	command.WaitDelay = killDelay

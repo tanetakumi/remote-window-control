@@ -61,10 +61,19 @@ func Run(cfg config.Config) error {
 		return settings.Get().MaxScale
 	}))
 
+	dispatcher.SetPCInjector(input.NewSendInputInjector(selection, func() float64 { return settings.Get().MaxScale }))
 	hub := session.NewHub(session.Options{
 		Dispatcher: dispatcher,
-		Source:     PreparingSource(media.ProbeSource(probe), PrepareWindow),
-		Target:     selection,
+		Source:     PreparingSource(media.ProbeSource(probe, false), PrepareWindow),
+		PCSource:   PreparingSource(media.ProbeSource(probe, true), RestoreWindow),
+		PreparePC: func(ctx context.Context) error {
+			handle, ok := selection.CurrentHandle()
+			if !ok {
+				return window.ErrNotSelected
+			}
+			return PreparePCMode(ctx, handle, systemDesktop{})
+		},
+		Target: selection,
 		Encoder: func() media.EncoderConfig {
 			encoder := media.DefaultEncoderConfig(cfg.FFmpegPath)
 			current := settings.Get()

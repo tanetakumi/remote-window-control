@@ -11,8 +11,8 @@ const (
 	restorePoll    = 20 * time.Millisecond
 )
 
-// isMinimized reports whether the window is minimized (iconic).
-func isMinimized(hwnd HWND) bool {
+// IsMinimized reports whether the window is minimized (iconic).
+func IsMinimized(hwnd HWND) bool {
 	iconic, _, _ := procIsIconic.Call(uintptr(hwnd))
 	return iconic != 0
 }
@@ -22,7 +22,7 @@ func isMinimized(hwnd HWND) bool {
 // It reports whether a restore was needed. Windows Graphics Capture delivers no
 // frames for a minimized window, and resizing one has no visible effect.
 func RestoreMinimized(hwnd HWND) (bool, error) {
-	if !isMinimized(hwnd) {
+	if !IsMinimized(hwnd) {
 		return false, nil
 	}
 	// ShowWindowAsync does not block on a hung target. A zero result means the
@@ -32,7 +32,7 @@ func RestoreMinimized(hwnd HWND) (bool, error) {
 		return true, ErrWindowMinimized
 	}
 	deadline := time.Now().Add(restoreTimeout)
-	for isMinimized(hwnd) {
+	for IsMinimized(hwnd) {
 		if time.Now().After(deadline) {
 			return true, ErrWindowMinimized
 		}

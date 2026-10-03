@@ -16,6 +16,7 @@ type sampleCounter struct {
 	logf    func(string, ...any)
 	handle  uint64
 	started time.Time
+	onFirst func()
 
 	samples, bytes, keyframes, keyframeBytes atomic.Uint64
 	// lastKeyframe is when the newest keyframe was written, in Unix
@@ -42,6 +43,9 @@ func (s *sampleCounter) WriteSample(sample pionmedia.Sample) error {
 		s.lastKeyframe.Store(time.Now().UnixNano())
 	}
 	if s.samples.Add(1) == 1 {
+		if s.onFirst != nil {
+			s.onFirst()
+		}
 		s.logf("first video sample written hwnd=%d bytes=%d elapsed=%s", s.handle, len(sample.Data), time.Since(s.started).Round(time.Millisecond))
 	}
 	return nil

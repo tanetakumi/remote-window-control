@@ -125,3 +125,18 @@ func clampInt32(value, lo, hi int32) int32 {
 	}
 	return min(max(value, lo), hi)
 }
+
+// MapToDesktop maps a video point to physical pixels and SendInput absolute
+// coordinates. Negative virtual-desktop origins and all endpoints are supported.
+func MapToDesktop(capture, desktop Rect, x, y float64) (screenX, screenY, absoluteX, absoluteY int32, ok bool) {
+	if capture.Width() <= 0 || capture.Height() <= 0 || desktop.Width() <= 1 || desktop.Height() <= 1 || math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
+		return
+	}
+	screenX = capture.Left + int32(float64(capture.Width()-1)*clampUnit(x))
+	screenY = capture.Top + int32(float64(capture.Height()-1)*clampUnit(y))
+	screenX = clampInt32(screenX, desktop.Left, desktop.Right-1)
+	screenY = clampInt32(screenY, desktop.Top, desktop.Bottom-1)
+	absoluteX = int32(math.Round(float64(screenX-desktop.Left) * 65535 / float64(desktop.Width()-1)))
+	absoluteY = int32(math.Round(float64(screenY-desktop.Top) * 65535 / float64(desktop.Height()-1)))
+	return screenX, screenY, absoluteX, absoluteY, true
+}

@@ -47,10 +47,11 @@ type PeerOptions struct {
 // Peer is one WebRTC connection to the browser: a video track fed by a
 // Pipeline, and a data channel for control messages.
 type Peer struct {
-	pc      *pion.PeerConnection
-	video   *pion.RTPTransceiver
-	cancel  context.CancelFunc
-	workers sync.WaitGroup
+	pc       *pion.PeerConnection
+	pipeline *Pipeline
+	video    *pion.RTPTransceiver
+	cancel   context.CancelFunc
+	workers  sync.WaitGroup
 
 	closeOnce sync.Once
 	closeErr  error
@@ -151,6 +152,7 @@ func NewPeer(opts PeerOptions) (*Peer, error) {
 		}
 	}
 	pipeline := NewPipeline(opts.Source, opts.Target, track, opts.Encoder)
+	p.pipeline = pipeline
 	pipeline.logf = opts.Logf
 	pipeline.StatsInterval = opts.StatsInterval
 
@@ -229,4 +231,9 @@ func (p *Peer) Close() error {
 		p.workers.Wait()
 	})
 	return p.closeErr
+}
+
+// Restart replaces capture on this connection without renegotiating WebRTC.
+func (p *Peer) Restart(source Source, onFirstSample func()) {
+	p.pipeline.Restart(source, onFirstSample)
 }

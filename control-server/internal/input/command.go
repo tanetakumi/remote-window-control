@@ -3,8 +3,14 @@
 // buttons; an Injector performs the actual input.
 package input
 
+const (
+	ModeWindow = "window"
+	ModePC     = "pc"
+)
+
 // Command types sent by the web client.
 const (
+	TypeMode           = "input.mode"
 	TypeTap            = "input.tap"
 	TypeMouseMove      = "input.mouseMove"
 	TypeMouseDown      = "input.mouseDown"
@@ -25,6 +31,7 @@ const MaxMessageBytes = 64 * 1024
 // declared; anything else in the JSON is ignored.
 type Command struct {
 	Type             string  `json:"type"`
+	Mode             string  `json:"mode,omitempty"`
 	Button           string  `json:"button,omitempty"`
 	Key              string  `json:"key,omitempty"`
 	Text             string  `json:"text,omitempty"`

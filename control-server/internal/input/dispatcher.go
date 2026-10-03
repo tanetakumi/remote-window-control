@@ -23,34 +23,51 @@ var (
 	errInvalidButton   = errors.New("invalid mouse button")
 	errTooManyButtons  = errors.New("too many held buttons")
 	errTooManyKeys     = errors.New("too many held keys")
+	errSwitching       = errors.New("input mode is switching")
+	errNoModeHandler   = errors.New("input mode switching is not configured")
+
+	// ErrModeSwitch is fatal to the connection: held input could not be
+	// released before switching injectors.
+	ErrModeSwitch = errors.New("input mode switch failed")
 )
 
 // Dispatcher validates input commands and forwards them to an Injector. It
 // remembers which keys and buttons are held so they can be released when the
 // controlling connection ends or the target window changes, and it rejects
-// commands outside an Activate/ReleaseAll window.
+// commands outside an Activate/ReleaseAll window. In PC mode it forwards to a
+// second Injector; each connection starts in Window mode.
 type Dispatcher struct {
-	injector Injector
+	windowInjector Injector
 
-	mu      sync.Mutex
-	enabled bool
-	buttons map[string]Command
-	keys    map[string]Command
+	mu         sync.Mutex
+	enabled    bool
+	injector   Injector // windowInjector or pcInjector
+	pcInjector Injector
+	mode       string
+	switching  bool // input waits until CompleteMode
+	onMode     func(mode string, changed bool)
+	buttons    map[string]Command
+	keys       map[string]Command
 }
 
 // NewDispatcher returns a disabled Dispatcher; call Activate to accept input.
 func NewDispatcher(injector Injector) *Dispatcher {
 	return &Dispatcher{
-		injector: injector,
-		buttons:  make(map[string]Command),
-		keys:     make(map[string]Command),
+		injector:       injector,
+		windowInjector: injector,
+		mode:           ModeWindow,
+		buttons:        make(map[string]Command),
+		keys:           make(map[string]Command),
 	}
 }
 
-// Activate starts accepting commands.
+// Activate starts accepting commands in Window mode.
 func (d *Dispatcher) Activate() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.injector = d.windowInjector
+	d.mode = ModeWindow
+	d.switching = false
 	d.enabled = true
 }
 
@@ -60,7 +77,9 @@ func (d *Dispatcher) ReleaseAll() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.enabled = false
-	d.releaseLocked()
+	_ = d.releaseLocked()
+	clear(d.keys)
+	clear(d.buttons)
 }
 
 // ChangeTarget releases held input on the old target, then runs change, which
@@ -68,7 +87,9 @@ func (d *Dispatcher) ReleaseAll() {
 func (d *Dispatcher) ChangeTarget(change func() error) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.releaseLocked()
+	_ = d.releaseLocked()
+	clear(d.keys)
+	clear(d.buttons)
 	return change()
 }
 
@@ -88,6 +109,10 @@ func (d *Dispatcher) Dispatch(raw []byte) error {
 		return errClosed
 	}
 
+	if d.switching {
+		return errSwitching
+	}
+
 	// Every button command is checked here, so none falls back to a default.
 	switch c.Type {
 	case TypeTap, TypeMouseDown, TypeMouseUp:
@@ -97,8 +122,38 @@ func (d *Dispatcher) Dispatch(raw []byte) error {
 	}
 
 	switch c.Type {
+	case TypeMode:
+		if c.Mode != ModeWindow && c.Mode != ModePC {
+			return fmt.Errorf("invalid input mode: %s", c.Mode)
+		}
+		if d.onMode == nil || (c.Mode == ModePC && d.pcInjector == nil) {
+			return errNoModeHandler
+		}
+		changed := c.Mode != d.mode
+		if changed {
+			if err := d.releaseLocked(); err != nil {
+				d.enabled = false
+				return fmt.Errorf("%w: release held input: %v", ErrModeSwitch, err)
+			}
+			d.injector = d.windowInjector
+			if c.Mode == ModePC {
+				d.injector = d.pcInjector
+			}
+			d.mode = c.Mode
+			d.switching = true
+		}
+		d.onMode(c.Mode, changed)
+		return nil
 	case TypeTap:
-		return d.injector.Tap(c.Button, c.X, c.Y)
+		err := d.injector.Tap(c.Button, c.X, c.Y)
+		if err != nil {
+			// A tap may fail after pressing, while releasing its button.
+			// Keep it for a later release; PC input ignores an unowned Up.
+			d.buttons[c.Button] = c
+		} else {
+			delete(d.buttons, c.Button)
+		}
+		return err
 	case TypeMouseMove:
 		d.moveHeldButtons(c.X, c.Y)
 		return d.injector.Move(c.X, c.Y)
@@ -117,6 +172,9 @@ func (d *Dispatcher) Dispatch(raw []byte) error {
 	case TypeKeyDown:
 		return d.keyDown(c)
 	case TypeKeyUp:
+		if _, held := d.keys[c.Key]; !held {
+			return nil
+		}
 		if err := d.injector.KeyUp(c); err != nil {
 			return err
 		}
@@ -163,13 +221,46 @@ func (d *Dispatcher) moveHeldButtons(x, y float64) {
 	}
 }
 
-func (d *Dispatcher) releaseLocked() {
+// releaseLocked retains failed releases so a fatal mode switch can retry them
+// during connection cleanup. ReleaseAll and ChangeTarget then forget them, so
+// an unavailable window cannot block later connections or target changes.
+func (d *Dispatcher) releaseLocked() error {
+	var err error
 	for key, c := range d.keys {
-		_ = d.injector.KeyUp(c)
-		delete(d.keys, key)
+		if releaseErr := d.injector.KeyUp(c); releaseErr != nil {
+			err = errors.Join(err, releaseErr)
+		} else {
+			delete(d.keys, key)
+		}
 	}
 	for button, c := range d.buttons {
-		_ = d.injector.MouseUp(button, c.X, c.Y)
-		delete(d.buttons, button)
+		if releaseErr := d.injector.MouseUp(button, c.X, c.Y); releaseErr != nil {
+			err = errors.Join(err, releaseErr)
+		} else {
+			delete(d.buttons, button)
+		}
 	}
+	return err
+}
+
+// SetPCInjector sets the Injector used in PC mode.
+func (d *Dispatcher) SetPCInjector(injector Injector) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.pcInjector = injector
+}
+
+// SetModeHandler registers a nonblocking connection-scoped callback. changed
+// is false for requests for the current mode; those need no capture restart.
+func (d *Dispatcher) SetModeHandler(handler func(string, bool)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.onMode = handler
+}
+
+// CompleteMode accepts input again after a mode switch.
+func (d *Dispatcher) CompleteMode() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.switching = false
 }

@@ -26,10 +26,11 @@ type FrameStream interface {
 // when ctx is cancelled or the stream is closed.
 type Source func(ctx context.Context, handle uint64) (FrameStream, error)
 
-// ProbeSource captures windows with a CaptureProbe.
-func ProbeSource(probe *capture.Probe) Source {
+// ProbeSource captures windows with a CaptureProbe, optionally including
+// secondary windows in each stream it opens.
+func ProbeSource(probe *capture.Probe, includeSecondaryWindows bool) Source {
 	return func(ctx context.Context, handle uint64) (FrameStream, error) {
-		stream, err := probe.OpenStream(ctx, handle)
+		stream, err := probe.OpenStream(ctx, handle, includeSecondaryWindows)
 		if err != nil {
 			return nil, err // not stream: that would be a non-nil interface holding nil
 		}

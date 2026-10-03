@@ -19,6 +19,8 @@ const (
 	typeError = "error"
 	// typeInputError reports a rejected input command; the connection stays up.
 	typeInputError = "input.error"
+	// typeInputMode confirms the input mode once its capture is streaming.
+	typeInputMode = "input.mode"
 )
 
 // message is the JSON envelope for signaling traffic in both directions.
@@ -31,6 +33,8 @@ type message struct {
 	StatsIntervalMs int64 `json:"statsIntervalMs,omitempty"`
 	// Report belongs to typeClientStats: numeric counters by name.
 	Report map[string]float64 `json:"report,omitempty"`
+	// Mode belongs to typeInputMode: "window" or "pc".
+	Mode string `json:"mode,omitempty"`
 }
 
 func errorMessage(text string) message { return message{Type: typeError, Message: text} }

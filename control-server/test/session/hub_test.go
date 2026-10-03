@@ -43,10 +43,17 @@ func newFixtureWith(t *testing.T, opts session.Options) *fixture {
 	t.Helper()
 	injector := &testutil.RecordingInjector{}
 	opts.Dispatcher = input.NewDispatcher(injector)
-	opts.Source = func(context.Context, uint64) (media.FrameStream, error) {
-		return nil, errors.New("no capture in tests")
+	if opts.Source == nil {
+		opts.Source = func(context.Context, uint64) (media.FrameStream, error) {
+			return nil, errors.New("no capture in tests")
+		}
 	}
-	opts.Target = noTarget{}
+	if opts.Target == nil {
+		opts.Target = noTarget{}
+	}
+	if opts.PCSource != nil {
+		opts.Dispatcher.SetPCInjector(&testutil.RecordingInjector{})
+	}
 	opts.Encoder = func() media.EncoderConfig { return media.DefaultEncoderConfig("ffmpeg") }
 	hub := session.NewHub(opts)
 	server := httptest.NewServer(hub)

@@ -26,3 +26,12 @@ func LeaveMaximized(HWND) (bool, error)              { return false, ErrUnsuppor
 func BringToForeground(HWND) error                   { return ErrUnsupported }
 func EnableDPIAwareness() error                      { return ErrUnsupported }
 func BuildNumber() (uint32, error)                   { return 0, ErrUnsupported }
+func MovePointer(int32, int32) error                 { return ErrUnsupported }
+func SendPointerButton(Button, bool) error           { return ErrUnsupported }
+func SendPointerWheel(int32) error                   { return ErrUnsupported }
+func VirtualDesktop() (Rect, error)                  { return Rect{}, ErrUnsupported }
+func WindowAt(int32, int32) HWND                     { return 0 }
+func ForegroundWindow() HWND                         { return 0 }
+func IsOwnedBy(HWND, HWND) bool                      { return false }
+func IsMinimized(HWND) bool                          { return false }
+func MinimizeAll() error                             { return ErrUnsupported }

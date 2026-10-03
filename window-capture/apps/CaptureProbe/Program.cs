@@ -5,6 +5,7 @@ using CaptureProbe;
 string? mode = null;
 nint? hwnd = null;
 string? stats = null;
+bool includeSecondaryWindows = false;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i].ToLowerInvariant())
@@ -28,13 +29,17 @@ for (var i = 0; i < args.Length; i++)
             if (stats is not null) return Usage();
             stats = args[i].ToLowerInvariant();
             break;
+        case "--include-secondary-windows":
+            if (includeSecondaryWindows) return Usage();
+            includeSecondaryWindows = true;
+            break;
         default:
             return Usage();
     }
 }
 
 if (mode is null || (mode == "--list" ? hwnd is not null : hwnd is null) ||
-    (mode != "--stream" && stats is not null))
+    (mode != "--stream" && (stats is not null || includeSecondaryWindows)))
 {
     return Usage();
 }
@@ -62,7 +67,7 @@ using var stdout = Console.OpenStandardOutput();
 if (mode == "--stream")
 {
     var captureStats = stats is null ? null : new CaptureStats(stats == "--stats-verify", Console.Error);
-    StreamFrames(hwnd!.Value, stdout, captureStats);
+    StreamFrames(hwnd!.Value, stdout, captureStats, includeSecondaryWindows);
 }
 else
 {
@@ -72,16 +77,16 @@ return 0;
 
 static int Usage()
 {
-    Console.Error.WriteLine("usage: CaptureProbe --list | --hwnd <handle> --stream [--stats | --stats-verify] | --hwnd <handle> --stdout-png");
+    Console.Error.WriteLine("usage: CaptureProbe --list | --hwnd <handle> --stream [--stats | --stats-verify] [--include-secondary-windows] | --hwnd <handle> --stdout-png");
     return 1;
 }
 
 // stats, when given, writes dirty-region measurements to stderr; stdout carries
 // only frames.
-static void StreamFrames(nint hwnd, Stream stdout, CaptureStats? stats)
+static void StreamFrames(nint hwnd, Stream stdout, CaptureStats? stats, bool includeSecondaryWindows)
 {
     using var capture = new WgcCaptureService(stats);
-    capture.StartCapture(hwnd);
+    capture.StartCapture(hwnd, includeSecondaryWindows);
 
     var header = new byte[24];
     var frameBuffer = Array.Empty<byte>();

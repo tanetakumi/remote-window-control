@@ -177,3 +177,30 @@ func TestPlanClientResize(t *testing.T) {
 		}
 	})
 }
+
+func TestMapToDesktopEndpointsAndNegativeOrigin(t *testing.T) {
+	for _, desktop := range []win32.Rect{{Right: 1920, Bottom: 1080}, {Left: -1920, Top: -1080, Right: 1920, Bottom: 1080}} {
+		for _, v := range []float64{0, 1} {
+			x, y, ax, ay, ok := win32.MapToDesktop(desktop, desktop, v, v)
+			if !ok {
+				t.Fatal("valid desktop rejected")
+			}
+			if v == 0 {
+				if x != desktop.Left || y != desktop.Top || ax != 0 || ay != 0 {
+					t.Fatal(x, y, ax, ay)
+				}
+			} else if x != desktop.Right-1 || y != desktop.Bottom-1 || ax != 65535 || ay != 65535 {
+				t.Fatal(x, y, ax, ay)
+			}
+		}
+	}
+	desktop := win32.Rect{Left: -1920, Right: 1920, Bottom: 1080}
+	capture := win32.Rect{Left: -960, Top: 100, Right: 0, Bottom: 500}
+	x, y, ax, ay, ok := win32.MapToDesktop(capture, desktop, .5, .5)
+	if !ok || x != -481 || y != 299 || ax <= 0 || ax >= 65535 || ay <= 0 || ay >= 65535 {
+		t.Fatal(x, y, ax, ay, ok)
+	}
+	if _, _, _, _, ok = win32.MapToDesktop(win32.Rect{}, desktop, 0, 0); ok {
+		t.Fatal("empty capture accepted")
+	}
+}

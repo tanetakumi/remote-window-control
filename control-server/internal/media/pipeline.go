@@ -23,11 +23,17 @@ type Pipeline struct {
 	// at this interval while a window streams.
 	StatsInterval time.Duration
 
-	source  Source
 	target  Target
 	sink    *wallClockSink
 	encoder EncoderConfig
 	logf    func(string, ...any)
+
+	// stateMu guards the source for the next capture, the channel Restart
+	// closes, and the callback waiting for the restarted capture's first sample.
+	stateMu       sync.Mutex
+	source        Source
+	restart       chan struct{}
+	onFirstSample func()
 
 	// keyframeRequest is the time of the oldest unanswered browser keyframe
 	// request in Unix nanoseconds, or zero.
@@ -56,7 +62,7 @@ func NewPipeline(source Source, target Target, sink SampleWriter, encoder Encode
 	if encoder.FPS <= 0 {
 		encoder.FPS = DefaultFPS
 	}
-	return &Pipeline{source: source, target: target, sink: &wallClockSink{SampleWriter: sink}, encoder: encoder, logf: log.Printf}
+	return &Pipeline{source: source, restart: make(chan struct{}), target: target, sink: &wallClockSink{SampleWriter: sink}, encoder: encoder, logf: log.Printf}
 }
 
 // RequestKeyframe asks for a keyframe, as the browser does with RTCP PLI or FIR
@@ -72,6 +78,7 @@ func (p *Pipeline) RequestKeyframe() {
 // other than the target changing.
 func (p *Pipeline) Run(ctx context.Context) error {
 	for ctx.Err() == nil {
+		source, restarted := p.captureState()
 		handle, selected, changed := p.target.State()
 		if !selected || handle == 0 {
 			select {
@@ -79,14 +86,18 @@ func (p *Pipeline) Run(ctx context.Context) error {
 				return nil
 			case <-changed:
 				continue
+			case <-restarted:
+				continue
 			}
 		}
 
-		err := p.RunWindow(ctx, handle, changed)
+		err := p.runWindow(ctx, handle, changed, source, restarted)
 		if err == nil || ctx.Err() != nil {
 			continue
 		}
 		select {
+		case <-restarted:
+			continue
 		case <-changed:
 			// The failure came from the target moving on; follow it.
 		default:
@@ -94,6 +105,36 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// Restart stops the current capture and uses source on the same target. The
+// confirmation callback runs only after a sample from the new capture is sent.
+func (p *Pipeline) Restart(source Source, onFirstSample func()) {
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+	p.source = source
+	p.onFirstSample = onFirstSample
+	close(p.restart)
+	p.restart = make(chan struct{})
+}
+
+func (p *Pipeline) captureState() (Source, <-chan struct{}) {
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+	return p.source, p.restart
+}
+
+// takeFirstSampleCallback returns the Restart callback once, unless a newer
+// Restart has superseded the capture that started with restarted.
+func (p *Pipeline) takeFirstSampleCallback(restarted <-chan struct{}) func() {
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+	if p.restart != restarted {
+		return nil
+	}
+	callback := p.onFirstSample
+	p.onFirstSample = nil
+	return callback
 }
 
 // RunWindow streams one window until ctx is cancelled or changed is closed. It
@@ -105,7 +146,12 @@ func (p *Pipeline) Run(ctx context.Context) error {
 // second after each change, then once per idleHeartbeat while the window stays
 // the same. Keyframes come only from encoder starts, so the stream relies on
 // NACK retransmission and keyframe requests to recover from loss.
-func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-chan struct{}) (result error) {
+func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-chan struct{}) error {
+	source, restarted := p.captureState()
+	return p.runWindow(parent, handle, changed, source, restarted)
+}
+
+func (p *Pipeline) runWindow(parent context.Context, handle uint64, changed <-chan struct{}, source Source, restarted <-chan struct{}) (result error) {
 	started := time.Now()
 	var frames, encoded, forced uint64
 	sink := &sampleCounter{SampleWriter: p.sink, logf: p.logf, handle: handle, started: started}
@@ -126,11 +172,21 @@ func (p *Pipeline) RunWindow(parent context.Context, handle uint64, changed <-ch
 		case <-ctx.Done():
 		case <-changed:
 			cancel()
+		case <-restarted:
+			cancel()
 		}
 	}()
 	defer func() { cancel(); watcher.Wait() }()
 
-	stream, err := p.source(ctx, handle)
+	sink.onFirst = func() {
+		if ctx.Err() != nil {
+			return
+		}
+		if callback := p.takeFirstSampleCallback(restarted); callback != nil {
+			callback()
+		}
+	}
+	stream, err := source(ctx, handle)
 	if err != nil {
 		return fmt.Errorf("open capture hwnd=%d: %w", handle, err)
 	}

@@ -51,7 +51,7 @@ internal sealed class WgcCaptureService : IDisposable
         return GraphicsCaptureSession.IsSupported();
     }
 
-    public void StartCapture(IntPtr hwnd)
+    public void StartCapture(IntPtr hwnd, bool includeSecondaryWindows = false)
     {
         ThrowIfDisposed();
         GraphicsCaptureInterop.EnsureInitialized();
@@ -71,6 +71,8 @@ internal sealed class WgcCaptureService : IDisposable
         // The browser draws its own cursor overlay; the host cursor would only
         // add frames and changed pixels to the stream.
         _session.IsCursorCaptureEnabled = false;
+        // PC mode: owned popups such as menus, clipped to the window's bounds.
+        _session.IncludeSecondaryWindows = includeSecondaryWindows;
         _stats?.Start(EnableDirtyRegions());
         _session.StartCapture();
     }

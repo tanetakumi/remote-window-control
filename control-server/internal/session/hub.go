@@ -4,7 +4,9 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -12,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -29,12 +32,16 @@ type Options struct {
 	// Dispatcher applies input commands; it is activated while a browser is
 	// connected and releases held input when the connection ends.
 	Dispatcher *input.Dispatcher
-	// Source, Target and Encoder configure the video each connection streams.
+	// Sources, Target and Encoder configure the video each connection streams.
 	// Encoder is called once per connection, so a changed setting applies to
 	// the next one.
-	Source  media.Source
-	Target  media.Target
-	Encoder func() media.EncoderConfig
+	Source media.Source
+	// PCSource includes secondary windows in the capture for PC control.
+	PCSource media.Source
+	// PreparePC minimizes other windows before starting PC capture.
+	PreparePC func(context.Context) error
+	Target    media.Target
+	Encoder   func() media.EncoderConfig
 	// StatsInterval, when positive, logs streaming statistics at this
 	// interval and asks the browser to report its own.
 	StatsInterval time.Duration
@@ -102,9 +109,18 @@ func (h *Hub) serve(c *conn) {
 
 	c.send(message{Type: typeConfig, StatsIntervalMs: h.opts.StatsInterval.Milliseconds()})
 
+	fail := func(err error) {
+		c.logf("session failed: %v", err)
+		c.send(errorMessage(err.Error()))
+		c.abort()
+	}
 	control := func(payload []byte) {
 		if err := h.opts.Dispatcher.Dispatch(payload); err != nil {
-			c.send(message{Type: typeInputError, Message: err.Error()})
+			if errors.Is(err, input.ErrModeSwitch) {
+				fail(err)
+			} else {
+				c.send(message{Type: typeInputError, Message: err.Error()})
+			}
 		}
 	}
 	peer, err := media.NewPeer(media.PeerOptions{
@@ -128,7 +144,26 @@ func (h *Hub) serve(c *conn) {
 		c.send(errorMessage(err.Error()))
 		return
 	}
-	defer peer.Close() // runs before ReleaseAll: stop the workers, then release input
+	// Mode switches prepare the desktop and restart capture, so they run off
+	// the Dispatcher lock in a worker that ends with the connection.
+	ctx, cancel := context.WithCancel(context.Background())
+	requests := make(chan modeRequest, 1)
+	h.opts.Dispatcher.SetModeHandler(func(mode string, changed bool) {
+		select {
+		case requests <- modeRequest{mode: mode, changed: changed}:
+		default:
+			// A conforming client has only one mode request in flight.
+			c.abort()
+		}
+	})
+	var worker sync.WaitGroup
+	worker.Go(func() { h.switchModes(ctx, c, peer, requests, fail) })
+	defer func() {
+		cancel()
+		h.opts.Dispatcher.SetModeHandler(nil)
+		worker.Wait()
+		_ = peer.Close() // runs before ReleaseAll: stop the workers, then release input
+	}()
 
 	for {
 		data, err := c.read()
@@ -192,4 +227,50 @@ func formatReport(report map[string]float64) string {
 		fields[i] = key + "=" + strconv.FormatFloat(report[key], 'f', -1, 64)
 	}
 	return strings.Join(fields, " ")
+}
+
+type modeRequest struct {
+	mode    string
+	changed bool
+}
+
+// switchModes applies mode requests until ctx ends. A changed mode restarts
+// capture, and the browser is told only once the new capture's first sample
+// is sent; input stays paused until then.
+func (h *Hub) switchModes(ctx context.Context, c *conn, peer *media.Peer, requests <-chan modeRequest, fail func(error)) {
+	for {
+		var request modeRequest
+		select {
+		case <-ctx.Done():
+			return
+		case request = <-requests:
+		}
+		if !request.changed {
+			c.send(message{Type: typeInputMode, Mode: request.mode})
+			continue
+		}
+		pc := request.mode == input.ModePC
+		if pc && h.opts.PreparePC != nil {
+			if err := h.opts.PreparePC(ctx); err != nil {
+				if ctx.Err() == nil {
+					fail(err)
+				}
+				return
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		source := h.opts.Source
+		if pc {
+			source = h.opts.PCSource
+		}
+		peer.Restart(source, func() {
+			if ctx.Err() != nil {
+				return
+			}
+			h.opts.Dispatcher.CompleteMode()
+			c.send(message{Type: typeInputMode, Mode: request.mode})
+		})
+	}
 }

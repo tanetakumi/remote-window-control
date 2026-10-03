@@ -110,3 +110,81 @@ func TestPreparingSourceSkipsCancelledCapture(t *testing.T) {
 		})
 	}
 }
+
+type modeDesktop struct {
+	calls     []string
+	minimized bool
+	cancel    context.CancelFunc
+	failure   error
+}
+
+func (d *modeDesktop) MinimizeAll() error {
+	d.calls = append(d.calls, "minimize")
+	if d.failure == nil {
+		d.minimized = true
+	}
+	return d.failure
+}
+func (d *modeDesktop) IsMinimized(win32.HWND) bool {
+	if d.cancel != nil && len(d.calls) > 0 {
+		d.cancel()
+	}
+	return d.minimized
+}
+func (d *modeDesktop) RestoreMinimized(win32.HWND) (bool, error) {
+	d.calls = append(d.calls, "restore")
+	restored := d.minimized
+	d.minimized = false
+	return restored, nil
+}
+func (d *modeDesktop) BringToForeground(win32.HWND) error {
+	d.calls = append(d.calls, "foreground")
+	return nil
+}
+func TestPCPreparationOrderAndCancellation(t *testing.T) {
+	d := &modeDesktop{}
+	if err := app.PreparePCMode(context.Background(), 42, d); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(d.calls, []string{"minimize", "restore", "foreground"}) {
+		t.Fatal(d.calls)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d = &modeDesktop{cancel: cancel}
+	if err := app.PreparePCMode(ctx, 42, d); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(d.calls, []string{"minimize"}) {
+		t.Fatal("preparation continued after cancellation", d.calls)
+	}
+	d = &modeDesktop{failure: errors.New("shell missing")}
+	if err := app.PreparePCMode(context.Background(), 42, d); err != nil {
+		t.Fatal("auxiliary failure aborted mode switch", err)
+	}
+	if !reflect.DeepEqual(d.calls, []string{"minimize", "restore", "foreground"}) {
+		t.Fatal(d.calls)
+	}
+}
+
+func TestPCPreparationRestoresAnAlreadyMinimizedTargetBeforeShellRequest(t *testing.T) {
+	d := &modeDesktop{minimized: true}
+	if err := app.PreparePCMode(context.Background(), 42, d); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(d.calls, []string{"restore", "minimize", "restore", "foreground"}) {
+		t.Fatal(d.calls)
+	}
+}
+
+func TestPCPreparationDoesNothingWhenAlreadyCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	d := &modeDesktop{minimized: true}
+	if err := app.PreparePCMode(ctx, 42, d); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if len(d.calls) != 0 {
+		t.Fatalf("cancelled preparation changed desktop: %v", d.calls)
+	}
+}
