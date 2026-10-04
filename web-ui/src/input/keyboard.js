@@ -10,6 +10,7 @@ export function attachTextInput({
   let sending = false;
   let disposed = false;
   let backdropPress = false;
+  let touchClosing = false;
   inputElement.value = draft.text;
 
   const syncUi = () => {
@@ -37,7 +38,11 @@ export function attachTextInput({
     onOpenChange?.(false);
     // iOS may leave the page scrolled after the keyboard closes.
     if (!disposed) window.scrollTo?.(0, 0);
-    if (restoreFocus && !disposed) buttonElement.focus({ preventScroll: true });
+    if (restoreFocus && !disposed) {
+      // Native dialog.close() may already have restored focus to this button.
+      if (touchClosing) buttonElement.blur();
+      else buttonElement.focus({ preventScroll: true });
+    }
   };
   const close = () => {
     dialogElement.close();
@@ -46,6 +51,7 @@ export function attachTextInput({
   const open = () => {
     if (disposed || active) return;
     active = true;
+    touchClosing = false;
     positionDialog();
     dialogElement.showModal();
     syncUi();
@@ -64,6 +70,7 @@ export function attachTextInput({
     // dismisses the mobile keyboard, and refocusing afterwards makes iOS
     // scroll the page out from under the top bar.
     if (active && event.pointerType === "touch" && event.isPrimary && event.button === 0) {
+      touchClosing = true;
       event.preventDefault();
     }
   };
@@ -76,14 +83,17 @@ export function attachTextInput({
     if (!dialogElement.open) finishClosing();
   });
   listen(dialogElement, "cancel", (event) => {
+    touchClosing = false;
     if (composing) event.preventDefault();
   });
+  listen(dialogElement, "keydown", () => { touchClosing = false; });
   const outsideDialog = (event) => {
     const rect = dialogElement.getBoundingClientRect();
     return event.clientX < rect.left || event.clientX > rect.right
       || event.clientY < rect.top || event.clientY > rect.bottom;
   };
   listen(dialogElement, "pointerdown", (event) => {
+    touchClosing = event.pointerType === "touch";
     backdropPress = event.target === dialogElement && outsideDialog(event);
   });
   listen(dialogElement, "click", (event) => {

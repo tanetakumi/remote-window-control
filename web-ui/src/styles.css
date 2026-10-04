@@ -83,7 +83,6 @@ body {
 .ambient-glow {
   position: fixed;
   border-radius: 50%;
-  filter: blur(90px);
   pointer-events: none;
   z-index: 0;
   opacity: 0.45;
