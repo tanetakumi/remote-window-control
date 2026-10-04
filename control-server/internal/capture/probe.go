@@ -6,11 +6,13 @@
 package capture
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -100,7 +102,16 @@ func (p *Probe) output(ctx context.Context, args ...string) ([]byte, error) {
 	command.WaitDelay = killDelay
 	stderr := tailbuf.New(maxErrorDetail)
 	command.Stderr = io.MultiWriter(stderr, hostlog.Stderr{Label: fmt.Sprintf("CaptureProbe args=%q", args)})
-	out, err := command.Output()
+	var stdout bytes.Buffer
+	command.Stdout = &stdout
+	err := command.Start()
+	if err == nil {
+		if err := win32.KillWithHost(command.Process); err != nil {
+			log.Printf("CaptureProbe args=%q may outlive the host: %v", args, err)
+		}
+		err = command.Wait()
+	}
+	out := stdout.Bytes()
 	if err != nil {
 		if tail := strings.TrimSpace(stderr.String()); tail != "" {
 			err = fmt.Errorf("%w: %s", err, tail)

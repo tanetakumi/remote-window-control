@@ -2,12 +2,16 @@
 
 package win32
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+)
 
 // Stubs for platforms without the Win32 API. They keep the dependants
 // buildable and testable; Windows command configuration is a no-op.
 
-func HideConsole(*exec.Cmd) {}
+func HideConsole(*exec.Cmd)          {}
+func KillWithHost(*os.Process) error { return nil }
 
 func PostKey(HWND, uint16, bool) error                { return ErrUnsupported }
 func PostMouseMove(HWND, int32, int32, Buttons) error { return ErrUnsupported }

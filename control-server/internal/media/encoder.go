@@ -131,6 +131,9 @@ func startEncoder(parent context.Context, cfg EncoderConfig, sink SampleWriter, 
 		_ = stdout.Close()
 		return nil, err
 	}
+	if err := win32.KillWithHost(cmd.Process); err != nil {
+		log.Printf("ffmpeg may outlive the host: %v", err)
+	}
 
 	go func() {
 		e.consumeErr = consumeIVF(sink, stdout)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"sync"
@@ -64,6 +65,9 @@ func (p *Probe) OpenStream(ctx context.Context, handle uint64, includeSecondaryW
 		cancel()
 		_ = pipe.Close()
 		return nil, err
+	}
+	if err := win32.KillWithHost(command.Process); err != nil {
+		log.Printf("CaptureProbe hwnd=%d may outlive the host: %v", handle, err)
 	}
 	go func() {
 		s.waitErr = command.Wait()
