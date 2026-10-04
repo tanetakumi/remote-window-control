@@ -604,7 +604,8 @@ body {
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
-  padding: calc(env(safe-area-inset-top, 0px) + 4px) calc(env(safe-area-inset-right, 0px) + 12px) 4px calc(env(safe-area-inset-left, 0px) + 12px);
+  height: calc(50px + env(safe-area-inset-top, 0px));
+  padding: calc(env(safe-area-inset-top, 0px) + 2px) calc(env(safe-area-inset-right, 0px) + 12px) 2px calc(env(safe-area-inset-left, 0px) + 12px);
   touch-action: none;
   background: var(--panel-bg);
   backdrop-filter: blur(16px);
@@ -649,14 +650,9 @@ body {
 #bitrate-pill .bitrate-unit { font-size: 0.6rem; }
 
 #input-mode-button {
-  gap: 6px;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
   touch-action: manipulation;
 }
 
-#input-mode-button .mode-label { min-width: 3.75em; text-align: center; }
 #input-mode-button svg[hidden] { display: none; }
 #input-mode-button:disabled { opacity: 0.5; cursor: default; }
 #input-mode-button[aria-pressed="true"] { background: var(--control-active); }
@@ -716,14 +712,21 @@ body {
 }
 
 #top-bar button {
-  min-width: 40px;
-  min-height: 40px;
+  min-width: 38px;
+  min-height: 38px;
+  height: 38px;
+  border-radius: 8px;
+}
+
+#top-bar > button,
+#top-bar-actions > button,
+#touch-mode button {
+  width: 38px;
+  flex: 0 0 38px;
 }
 
 #top-bar #special-keys-button {
   position: relative;
-  min-width: 44px;
-  min-height: 44px;
   touch-action: manipulation;
 }
 
@@ -740,7 +743,6 @@ body {
 }
 
 #windows-button {
-  flex: 0 0 40px;
   touch-action: manipulation;
 }
 
@@ -750,20 +752,16 @@ body {
   gap: 4px;
   padding: 2px;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 11px;
   background: var(--bg-glass-input);
 }
 
 #touch-mode button {
-  gap: 6px;
-  padding: 0 10px;
+  padding: 0;
   border-color: transparent;
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
   touch-action: manipulation;
 }
 
@@ -784,12 +782,6 @@ body {
   cursor: default;
 }
 
-@media (max-width: 480px) {
-  #touch-mode .mode-label, #input-mode-button .mode-label {
-    display: none;
-  }
-}
-
 @media (min-width: 481px) and (max-width: 600px) {
   #top-bar {
     gap: 4px;
@@ -805,7 +797,6 @@ body {
     padding-right: calc(env(safe-area-inset-right, 0px) + 4px);
   }
   #top-bar-actions { gap: 4px; }
-  #touch-mode button { padding: 0 8px; }
 }
 
 @media (max-width: 340px) {

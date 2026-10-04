@@ -33,7 +33,7 @@ function setup(t) {
   globalThis.WebSocket = Socket;
   const video = Object.assign(new EventTarget(), { play: () => Promise.resolve() });
   const attrs = {};
-  const children = Object.fromEntries([".mode-label", ".input-window-icon", ".input-pc-icon"].map(k => [k, { toggleAttribute(name, value) { this[name] = value; } }]));
+  const children = Object.fromEntries([".input-window-icon", ".input-pc-icon"].map(k => [k, { toggleAttribute(name, value) { this[name] = value; } }]));
   const button = { setAttribute: (k,v) => attrs[k] = v, querySelector: (k) => children[k] };
   let failure;
   const ready = createRemoteConnection({
@@ -66,7 +66,7 @@ test("mode requests follow pending input, block sends and wait for host confirma
   await f.confirm("pc");
   assert.equal(remote.inputMode, "pc");
   assert.equal(f.attrs["aria-pressed"], "true");
-  assert.equal(f.children[".mode-label"].textContent, "PC");
+  assert.equal(f.attrs["aria-label"], "PC control: on. Switch to Window mode");
   assert.equal(f.button.disabled, false);
   assert.equal(f.attrs["aria-busy"], "false");
   assert.equal(f.children[".input-window-icon"].hidden, true);
